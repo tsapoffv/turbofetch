@@ -7,3 +7,7 @@ local.properties
 captures/
 .externalNativeBuild/
 .cxx/
+
+# Собранный ffmpeg — 22 МБ бинарников, они воспроизводимы сборкой
+# (см. docs/RAZVERTKA.md), в репозитории им не место.
+app/src/main/jniLibs/

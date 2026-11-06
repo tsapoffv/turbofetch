@@ -1,5 +1,6 @@
 package com.turbofetch.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.turbofetch.domain.model.DownloadTask
@@ -18,6 +19,7 @@ data class TaskEntity(
     val durationSeconds: Int?,
     val availableFormats: List<MediaFormat>,
     val selectedFormat: MediaFormat?,
+    val audioFormat: MediaFormat?,
     val audioOnly: Boolean,
     val customName: String?,
     val status: String,
@@ -25,6 +27,10 @@ data class TaskEntity(
     val errorMessage: String?,
     val outputUri: String?,
     val createdAt: Long,
+    /** Позиция в очереди. Колонка названа `position`, потому что `order` — зарезервированное слово SQL. */
+    @ColumnInfo(name = "position")
+    val order: Int,
+    val needsRefresh: Boolean,
 )
 
 fun TaskEntity.toDomain(): DownloadTask = DownloadTask(
@@ -37,6 +43,7 @@ fun TaskEntity.toDomain(): DownloadTask = DownloadTask(
     durationSeconds = durationSeconds,
     availableFormats = availableFormats,
     selectedFormat = selectedFormat,
+    audioFormat = audioFormat,
     audioOnly = audioOnly,
     customName = customName,
     status = runCatching { TaskStatus.valueOf(status) }.getOrDefault(TaskStatus.PENDING),
@@ -44,6 +51,8 @@ fun TaskEntity.toDomain(): DownloadTask = DownloadTask(
     errorMessage = errorMessage,
     outputUri = outputUri,
     createdAt = createdAt,
+    order = order,
+    needsRefresh = needsRefresh,
 )
 
 fun DownloadTask.toEntity(): TaskEntity = TaskEntity(
@@ -56,6 +65,7 @@ fun DownloadTask.toEntity(): TaskEntity = TaskEntity(
     durationSeconds = durationSeconds,
     availableFormats = availableFormats,
     selectedFormat = selectedFormat,
+    audioFormat = audioFormat,
     audioOnly = audioOnly,
     customName = customName,
     status = status.name,
@@ -63,4 +73,6 @@ fun DownloadTask.toEntity(): TaskEntity = TaskEntity(
     errorMessage = errorMessage,
     outputUri = outputUri,
     createdAt = createdAt,
+    order = order,
+    needsRefresh = needsRefresh,
 )

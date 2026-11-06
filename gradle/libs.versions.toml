@@ -14,6 +14,11 @@ okhttp = "5.5.1"
 # 1.10+ тянет kotlin-stdlib 2.3/2.4, что не читается компилятором Kotlin 2.2.10
 # (встроенным в AGP 9.5.1). 1.9.0 требует stdlib 2.2.0 — совпадает.
 serialization = "1.9.0"
+# 3.4+ собран на Kotlin 2.3/2.4 — не читается компилятором 2.2.10.
+# 3.3.0 требует stdlib 2.2.0 и совместим.
+coil = "3.3.0"
+desugar = "2.1.5"
+newpipeextractor = "0.26.5"
 junit = "4.13.2"
 androidxJunit = "1.3.0"
 espresso = "3.7.0"
@@ -44,6 +49,11 @@ kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
+coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp", version.ref = "coil" }
+# Резолвер YouTube. NewPipeExtractor требует core library desugaring при minSdk < 33.
+newpipeextractor = { group = "com.github.TeamNewPipe", name = "NewPipeExtractor", version.ref = "newpipeextractor" }
+desugar-jdk-libs = { group = "com.android.tools", name = "desugar_jdk_libs_nio", version.ref = "desugar" }
 # В okhttp-android база суффиксов лежит в assets, а JVM-тесты assets AAR не видят.
 # Для юнит-тестов нужен вариант с ресурсом на classpath.
 okhttp-jvm = { group = "com.squareup.okhttp3", name = "okhttp-jvm", version.ref = "okhttp" }

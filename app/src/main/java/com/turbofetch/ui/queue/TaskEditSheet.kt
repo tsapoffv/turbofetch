@@ -34,7 +34,7 @@ import com.turbofetch.domain.model.DownloadTask
 import com.turbofetch.domain.model.FileNameTemplate
 
 /**
- * Шторка редактирования одной задачи: качество, mp3 и имя файла.
+ * Шторка редактирования одной задачи: качество, звук, mp3 и имя файла.
  * Имя пересчитывается по шаблону из настроек на лету — так видно, что получится.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -48,11 +48,18 @@ fun TaskEditSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var selectedFormatId by remember(task.id) { mutableStateOf(task.selectedFormat?.id) }
+    var selectedAudioId by remember(task.id) { mutableStateOf(task.audioFormat?.id) }
     var audioOnly by remember(task.id) { mutableStateOf(task.audioOnly) }
     var customName by remember(task.id) { mutableStateOf(task.customName.orEmpty()) }
 
-    val videoFormats = task.availableFormats.filter { it.hasVideo }
-    val hasAudioFormat = task.availableFormats.any { it.isAudioOnly }
+    val videoFormats = task.availableFormats.filter { it.hasVideo && it.hasAudio }
+    val videoOnlyFormats = task.availableFormats.filter { it.hasVideo && !it.hasAudio }
+    val audioFormats = task.availableFormats.filter { it.hasAudio && !it.hasVideo }
+
+    // Все варианты видео: и со звуком, и требующие отдельной аудиодорожки.
+    val allVideoFormats = videoFormats + videoOnlyFormats
+    val selectedFormat = allVideoFormats.firstOrNull { it.id == selectedFormatId }
+    val needsSeparateAudio = selectedFormat != null && !selectedFormat.hasAudio
 
     val previewName = FileNameTemplate.render(
         template = template,
@@ -61,7 +68,7 @@ fun TaskEditSheet(
         quality = if (audioOnly) {
             "audio"
         } else {
-            task.availableFormats.firstOrNull { it.id == selectedFormatId }?.label.orEmpty()
+            selectedFormat?.label.orEmpty()
         },
         extension = if (audioOnly) "mp3" else "mp4",
         id = task.id,
@@ -83,12 +90,12 @@ fun TaskEditSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            if (videoFormats.isNotEmpty()) {
+            if (allVideoFormats.isNotEmpty()) {
                 Spacer(Modifier.height(18.dp))
                 Text("Качество", style = MaterialTheme.typography.labelLarge)
                 Spacer(Modifier.height(8.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    videoFormats.forEach { format ->
+                    allVideoFormats.forEach { format ->
                         FilterChip(
                             selected = !audioOnly && selectedFormatId == format.id,
                             onClick = {
@@ -101,7 +108,28 @@ fun TaskEditSheet(
                 }
             }
 
-            if (hasAudioFormat) {
+            if (needsSeparateAudio && audioFormats.isNotEmpty()) {
+                Spacer(Modifier.height(18.dp))
+                Text("Качество звука", style = MaterialTheme.typography.labelLarge)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Видео и звук приходят отдельными потоками — они будут склеены в один файл",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    audioFormats.forEach { format ->
+                        FilterChip(
+                            selected = selectedAudioId == format.id,
+                            onClick = { selectedAudioId = format.id },
+                            label = { Text(format.label) },
+                        )
+                    }
+                }
+            }
+
+            if (audioFormats.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -145,9 +173,12 @@ fun TaskEditSheet(
                     onClick = {
                         onSave(
                             task.copy(
-                                selectedFormat = task.availableFormats
+                                selectedFormat = allVideoFormats
                                     .firstOrNull { it.id == selectedFormatId }
                                     ?: task.selectedFormat,
+                                audioFormat = audioFormats
+                                    .firstOrNull { it.id == selectedAudioId }
+                                    ?: task.audioFormat,
                                 audioOnly = audioOnly,
                                 customName = customName.ifBlank { null },
                             ),

@@ -45,4 +45,34 @@ class TaskRepository(private val dao: TaskDao) {
         val current = dao.get(id) ?: return
         dao.update(current.copy(outputUri = uri, status = TaskStatus.COMPLETED.name, progress = 1f))
     }
+
+    /**
+     * Пометить задачу на повтор: прямая ссылка протухла, но частично скачанный
+     * файл сохраняем — следующая попытка продолжит его с места обрыва.
+     */
+    suspend fun markNeedsRefresh(id: String, message: String?) {
+        val current = dao.get(id) ?: return
+        dao.update(
+            current.copy(
+                status = TaskStatus.QUEUED.name,
+                errorMessage = message,
+                needsRefresh = true,
+            ),
+        )
+    }
+
+    /** Обновить позицию задачи в очереди. */
+    suspend fun updateOrder(id: String, order: Int) {
+        val current = dao.get(id) ?: return
+        dao.update(current.copy(order = order))
+    }
+
+    /**
+     * Переписать порядок очереди целиком: [ids] — новый порядок сверху вниз.
+     */
+    suspend fun reorder(ids: List<String>) {
+        ids.forEachIndexed { index, id ->
+            updateOrder(id, index)
+        }
+    }
 }

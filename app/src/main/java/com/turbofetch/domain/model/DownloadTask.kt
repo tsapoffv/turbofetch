@@ -42,6 +42,12 @@ data class DownloadTask(
     val durationSeconds: Int? = null,
     val availableFormats: List<MediaFormat> = emptyList(),
     val selectedFormat: MediaFormat? = null,
+    /**
+     * Отдельный аудиопоток для склейки. Нужен, когда выбранное видео идёт
+     * без звука (DASH у YouTube): видео и аудио качаются отдельно,
+     * а потом склеиваются в один MP4.
+     */
+    val audioFormat: MediaFormat? = null,
     val audioOnly: Boolean = false,
     val customName: String? = null,
     val status: TaskStatus = TaskStatus.PENDING,
@@ -49,6 +55,13 @@ data class DownloadTask(
     val errorMessage: String? = null,
     val outputUri: String? = null,
     val createdAt: Long = 0L,
+    /** Порядок в очереди: меньше — выше. Задаёт порядок пакетной скачки. */
+    val order: Int = 0,
+    /**
+     * Ссылка на файл протухла (у площадок она подписана и живёт недолго) —
+     * перед следующей попыткой нужно заново разобрать ссылку.
+     */
+    val needsRefresh: Boolean = false,
 ) {
     /** Что показывать в списке, пока метаданных нет. */
     val displayTitle: String get() = title ?: url

@@ -3,12 +3,15 @@ package com.turbofetch.core.di
 import android.content.Context
 import androidx.work.WorkManager
 import com.turbofetch.data.db.TurboFetchDatabase
+import com.turbofetch.data.media.FfmpegRunner
 import com.turbofetch.data.remote.HttpClientFactory
 import com.turbofetch.data.repo.SettingsRepository
 import com.turbofetch.data.repo.TaskRepository
 import com.turbofetch.data.resolver.TikTokResolver
 import com.turbofetch.data.resolver.XResolver
+import com.turbofetch.data.resolver.youtube.YouTubeResolver
 import com.turbofetch.data.storage.MediaStoreWriter
+import com.turbofetch.data.storage.MediaMuxerMerger
 import com.turbofetch.domain.engine.DownloadEngine
 import com.turbofetch.domain.engine.RealDownloadEngine
 import com.turbofetch.domain.model.Source
@@ -30,6 +33,12 @@ class AppContainer(context: Context) {
 
     val mediaStoreWriter: MediaStoreWriter by lazy { MediaStoreWriter(appContext) }
 
+    /** Склейка видео и звука в один MP4 (штатные MediaExtractor/MediaMuxer). */
+    val mediaMuxerMerger: MediaMuxerMerger by lazy { MediaMuxerMerger() }
+
+    /** ffmpeg — нужен только для перекодирования в mp3. */
+    val ffmpegRunner: FfmpegRunner by lazy { FfmpegRunner(appContext) }
+
     val workManager: WorkManager by lazy { WorkManager.getInstance(appContext) }
 
     /**
@@ -42,6 +51,7 @@ class AppContainer(context: Context) {
         mapOf<Source, VideoResolver>(
             Source.TIKTOK to TikTokResolver(httpClient),
             Source.X to XResolver(httpClient),
+            Source.YOUTUBE to YouTubeResolver(httpClient),
         )
     }
 

@@ -8,7 +8,7 @@ import androidx.room.TypeConverters
 
 @Database(
     entities = [TaskEntity::class, SettingsEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -28,7 +28,11 @@ abstract class TurboFetchDatabase : RoomDatabase() {
                     context.applicationContext,
                     TurboFetchDatabase::class.java,
                     "turbofetch.db",
-                ).build().also { instance = it }
+                )
+                    // Приложение личное, данные не жалко: при смене схемы
+                    // проще пересоздать базу, чем писать миграции.
+                    .fallbackToDestructiveMigration()
+                    .build().also { instance = it }
             }
     }
 }

@@ -36,14 +36,29 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // NewPipeExtractor использует java.time и nio — нужна десуксаризация.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     buildFeatures {
         compose = true
     }
 
+    testOptions {
+        // В unit-тестах android.util.Log и прочие android.* возвращают заглушки
+        // вместо исключения — иначе любой вызов логгера роняет тест.
+        unitTests.isReturnDefaultValues = true
+    }
+
     packaging {
         resources.excludes += setOf("/META-INF/{AL2.0,LGPL2.1}")
+
+        jniLibs {
+            // Нативные библиотеки должны оказаться на диске в nativeLibraryDir:
+            // оттуда можно запускать исполняемый файл (ffmpeg). По умолчанию AGP
+            // их не распаковывает, а грузит прямо из APK — запустить оттуда нельзя.
+            useLegacyPackaging = true
+        }
     }
 }
 
@@ -56,6 +71,15 @@ kotlin {
 
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
+}
+
+tasks.withType<Test>().configureEach {
+    // Сетевые тесты не ходят в интернет по умолчанию. Включаются явно:
+    // ./gradlew testDebugUnitTest -Dturbofetch.network=true
+    systemProperty("turbofetch.network", System.getProperty("turbofetch.network") ?: "false")
+    testLogging {
+        showStandardStreams = true
+    }
 }
 
 dependencies {
@@ -83,6 +107,10 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
+    implementation(libs.newpipeextractor)
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

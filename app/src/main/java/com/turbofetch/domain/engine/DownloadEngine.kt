@@ -32,7 +32,15 @@ sealed interface DownloadProgress {
 
     data class Finished(val file: File, val bytes: Long) : DownloadProgress
 
-    data class Failed(val message: String, val cause: Throwable? = null) : DownloadProgress
+    /**
+     * Ошибка. [retryable] = true, если имеет смысл повторить попытку:
+     * обрыв сети, таймаут, ответ 5xx. Ошибка 4xx (403, 404) — не повторяемая.
+     */
+    data class Failed(
+        val message: String,
+        val cause: Throwable? = null,
+        val retryable: Boolean = false,
+    ) : DownloadProgress
 }
 
 /**

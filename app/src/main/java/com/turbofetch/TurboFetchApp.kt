@@ -1,9 +1,11 @@
 package com.turbofetch
 
+import android.app.Activity
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import android.os.Bundle
 import com.turbofetch.core.di.AppContainer
 
 class TurboFetchApp : Application() {
@@ -11,10 +13,41 @@ class TurboFetchApp : Application() {
     lateinit var container: AppContainer
         private set
 
+    /**
+     * Приложение сейчас на экране? Нужно, чтобы открыть готовый файл сразу:
+     * из фонового сервиса Android всё равно не разрешает запустить activity.
+     */
+    @Volatile
+    var isForeground: Boolean = false
+        private set
+
+    private var startedActivities = 0
+
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
         createNotificationChannels()
+        registerActivityLifecycleCallbacks()
+    }
+
+    private fun registerActivityLifecycleCallbacks() {
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            override fun onActivityStarted(activity: Activity) {
+                startedActivities++
+                isForeground = startedActivities > 0
+            }
+
+            override fun onActivityStopped(activity: Activity) {
+                startedActivities = (startedActivities - 1).coerceAtLeast(0)
+                isForeground = startedActivities > 0
+            }
+
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+            override fun onActivityResumed(activity: Activity) = Unit
+            override fun onActivityPaused(activity: Activity) = Unit
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+            override fun onActivityDestroyed(activity: Activity) = Unit
+        })
     }
 
     private fun createNotificationChannels() {

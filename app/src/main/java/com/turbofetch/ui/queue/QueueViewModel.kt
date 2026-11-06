@@ -68,9 +68,25 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         val result = engine.probe(task.url)
         result.fold(
             onSuccess = { info ->
-                val preset = settingsRepository.current().defaultQuality
-                val picked = QualityPreset.pick(info.formats, preset)
-                com.turbofetch.core.Log.i("Probe ok: форматов ${info.formats.size}, выбран ${picked?.label}")
+                val settings = settingsRepository.current()
+                val audioStreams = info.formats.filter { it.hasAudio && !it.hasVideo }
+                val picked = if (settings.defaultAudioOnly) {
+                    audioStreams.maxByOrNull { it.bitrate }
+                } else {
+                    QualityPreset.pick(info.formats, settings.defaultQuality)
+                }
+
+                // Если выбранное видео идёт без звука (DASH), сразу подбираем
+                // отдельную аудиодорожку — их потом склеим.
+                val pairedAudio = picked
+                    ?.takeIf { !it.hasAudio }
+                    ?.let { audioStreams.maxByOrNull { stream -> stream.bitrate } }
+
+                com.turbofetch.core.Log.i(
+                    "Probe ok: форматов ${info.formats.size}, выбран ${picked?.label}" +
+                        (pairedAudio?.let { " + звук ${it.label}" } ?: ""),
+                )
+
                 repository.upsert(
                     task.copy(
                         title = info.title,
@@ -79,6 +95,8 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
                         durationSeconds = info.durationSeconds,
                         availableFormats = info.formats,
                         selectedFormat = picked ?: info.formats.firstOrNull(),
+                        audioFormat = pairedAudio,
+                        audioOnly = settings.defaultAudioOnly,
                         status = TaskStatus.READY,
                     ),
                 )
@@ -152,6 +170,20 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
 
     fun consumeMessage() {
         _messages.value = null
+    }
+
+    /**
+     * Переставить задачу в очереди. Порядок важен для пакетной скачки:
+     * файллы качаются в том порядке, в котором они стоят в списке.
+     */
+    fun moveTask(from: Int, to: Int) {
+        viewModelScope.launch {
+            val current = tasks.value.toMutableList()
+            if (from !in current.indices || to !in current.indices) return@launch
+            val moved = current.removeAt(from)
+            current.add(to, moved)
+            repository.reorder(current.map { it.id })
+        }
     }
 
     fun formatFor(task: DownloadTask): MediaFormat? = task.selectedFormat

@@ -12,13 +12,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -29,20 +33,29 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
 import com.turbofetch.domain.model.DownloadTask
 import com.turbofetch.domain.model.Source
 import com.turbofetch.domain.model.TaskStatus
@@ -55,7 +68,18 @@ fun QueueScreen(
     onOpenSettings: () -> Unit,
 ) {
     val tasks by viewModel.tasks.collectAsStateWithLifecycle()
+    val message by viewModel.messages.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
     var editing by remember { mutableStateOf<DownloadTask?>(null) }
+    val listState = rememberLazyListState()
+    val reorderState = rememberReorderState(listState) { from, to -> viewModel.moveTask(from, to) }
+
+    LaunchedEffect(message) {
+        message?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.consumeMessage()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -68,46 +92,67 @@ fun QueueScreen(
                 },
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (tasks.isEmpty()) {
-                EmptyQueue()
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        start = 16.dp,
-                        end = 16.dp,
-                        top = 8.dp,
-                        bottom = 96.dp,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    items(tasks, key = { it.id }) { task ->
-                        TaskCard(
-                            task = task,
-                            onClick = { editing = task },
-                            onDownload = { viewModel.download(task.id) },
-                            onCancel = { viewModel.cancel(task.id) },
-                            onDelete = { viewModel.delete(task.id) },
-                            onRetry = { viewModel.retry(task.id) },
-                            onOpen = { viewModel.openOutput(task) },
-                        )
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            LinkInput(
+                onSubmit = { link ->
+                    viewModel.addLink(link)
+                },
+            )
+
+            Box(modifier = Modifier.fillMaxSize()) {
+                if (tasks.isEmpty()) {
+                    EmptyQueue()
+                } else {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                            start = 16.dp,
+                            end = 16.dp,
+                            top = 4.dp,
+                            bottom = 96.dp,
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        itemsIndexed(tasks, key = { _, task -> task.id }) { index, task ->
+                            val dragging = reorderState.draggingItemIndex == index
+                            TaskCard(
+                                task = task,
+                                modifier = Modifier
+                                    .zIndex(if (dragging) 1f else 0f)
+                                    .graphicsLayer {
+                                        if (dragging) {
+                                            translationY = reorderState.dragOffset
+                                            shadowElevation = 12.dp.toPx()
+                                        }
+                                    }
+                                    .animateItem(),
+                                dragHandleModifier = Modifier.dragHandle(reorderState, index),
+                                onClick = { editing = task },
+                                onDownload = { viewModel.download(task.id) },
+                                onCancel = { viewModel.cancel(task.id) },
+                                onDelete = { viewModel.delete(task.id) },
+                                onRetry = { viewModel.retry(task.id) },
+                                onOpen = { viewModel.openOutput(task) },
+                            )
+                        }
                     }
                 }
-            }
 
-            if (tasks.any { it.status == TaskStatus.READY || it.status == TaskStatus.PENDING }) {
-                Button(
-                    onClick = { viewModel.downloadAll() },
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(16.dp)
-                        .fillMaxWidth(),
-                ) {
-                    Icon(Icons.Default.Download, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Скачать всё")
+                if (tasks.any { it.status == TaskStatus.READY || it.status == TaskStatus.PENDING }) {
+                    Button(
+                        onClick = { viewModel.downloadAll() },
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(16.dp)
+                            .fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Скачать всё")
+                    }
                 }
             }
         }
@@ -123,6 +168,40 @@ fun QueueScreen(
                 editing = null
             },
         )
+    }
+}
+
+/** Поле для ввода ссылки вручную — «Поделиться» не единственный способ. */
+@Composable
+private fun LinkInput(onSubmit: (String) -> Unit) {
+    var text by remember { mutableStateOf("") }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        OutlinedTextField(
+            value = text,
+            onValueChange = { text = it },
+            placeholder = { Text("Вставьте ссылку на видео") },
+            singleLine = true,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(8.dp))
+        IconButton(
+            onClick = {
+                val link = text.trim()
+                if (link.isNotEmpty()) {
+                    onSubmit(link)
+                    text = ""
+                }
+            },
+            enabled = text.isNotBlank(),
+        ) {
+            Icon(Icons.Default.Send, contentDescription = "Добавить в очередь")
+        }
     }
 }
 
@@ -153,6 +232,8 @@ private fun EmptyQueue() {
 @Composable
 private fun TaskCard(
     task: DownloadTask,
+    modifier: Modifier = Modifier,
+    dragHandleModifier: Modifier = Modifier,
     onClick: () -> Unit,
     onDownload: () -> Unit,
     onCancel: () -> Unit,
@@ -162,13 +243,31 @@ private fun TaskCard(
 ) {
     Card(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
         ),
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.Top) {
+                Icon(
+                    imageVector = Icons.Default.DragHandle,
+                    contentDescription = "Перетащить",
+                    tint = MaterialTheme.colorScheme.outline,
+                    modifier = dragHandleModifier.size(24.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                task.thumbnailUrl?.let { url ->
+                    AsyncImage(
+                        model = url,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(RoundedCornerShape(8.dp)),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = task.displayTitle,
