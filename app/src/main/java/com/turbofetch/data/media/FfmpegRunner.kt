@@ -77,7 +77,15 @@ class FfmpegRunner(context: Context) {
 
             if (code != 0) {
                 Log.e("ffmpeg завершился с кодом $code: $outputText")
-                error("ffmpeg не смог перекодировать файл: ${outputText.take(300)}")
+                // В карточку задачи ошибка попадает целиком — берём только первую
+                // строку и обрезаем, иначе она занимает пол-экрана.
+                val reason = outputText.lineSequence()
+                    .firstOrNull { it.isNotBlank() }
+                    ?.substringAfter("Error opening input file ")
+                    ?.substringBefore("Error opening input files")
+                    ?.take(120)
+                    ?: "код $code"
+                error("ffmpeg: $reason")
             }
             Log.i("ffmpeg: mp3 готов, ${output.length()} байт")
             Unit

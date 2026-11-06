@@ -120,15 +120,19 @@ fun QueueScreen(
                             val dragging = reorderState.draggingItemIndex == index
                             TaskCard(
                                 task = task,
+                                dragging = dragging,
                                 modifier = Modifier
                                     .zIndex(if (dragging) 1f else 0f)
                                     .graphicsLayer {
                                         if (dragging) {
                                             translationY = reorderState.dragOffset
-                                            shadowElevation = 12.dp.toPx()
+                                            shadowElevation = 16.dp.toPx()
                                         }
                                     }
-                                    .animateItem(),
+                                    // Перетаскиваемую карточку анимировать нельзя:
+                                    // её позиция и так задаётся сдвигом, а animateItem
+                                    // двигал бы её второй раз — карточка «дёргалась».
+                                    .then(if (dragging) Modifier else Modifier.animateItem()),
                                 dragHandleModifier = Modifier.dragHandle(reorderState, index),
                                 onClick = { editing = task },
                                 onDownload = { viewModel.download(task.id) },
@@ -232,6 +236,7 @@ private fun EmptyQueue() {
 @Composable
 private fun TaskCard(
     task: DownloadTask,
+    dragging: Boolean = false,
     modifier: Modifier = Modifier,
     dragHandleModifier: Modifier = Modifier,
     onClick: () -> Unit,
@@ -244,8 +249,17 @@ private fun TaskCard(
     Card(
         onClick = onClick,
         modifier = modifier.fillMaxWidth(),
+        // Фон обязательно непрозрачный: при перетаскивании карточки наезжают
+        // друг на друга, и полупрозрачный фон давал кашу из двух текстов.
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+            containerColor = if (dragging) {
+                MaterialTheme.colorScheme.surfaceContainerHighest
+            } else {
+                MaterialTheme.colorScheme.surfaceContainer
+            },
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = if (dragging) 10.dp else 1.dp,
         ),
     ) {
         Column(modifier = Modifier.padding(14.dp)) {

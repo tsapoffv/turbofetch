@@ -100,13 +100,11 @@ class RealDownloadEngine(
                 request.outputFile.parentFile?.mkdirs()
                 var written = if (resuming) alreadyHave else 0L
 
-                // Если сервер не поддержал докачку — начинаем файл заново.
-                if (!resuming && request.outputFile.exists()) {
-                    request.outputFile.delete()
-                }
-
                 body.byteStream().use { input ->
-                    request.outputFile.outputStream().let { output ->
+                    // В режиме докачки дописываем в конец, иначе — перезаписываем.
+                    // File.outputStream() всегда открывает файл на перезапись и
+                    // обрезал его, из-за чего докачанный файл получался битым.
+                    java.io.FileOutputStream(request.outputFile, resuming).use { output ->
                         val buffer = ByteArray(64 * 1024)
                         while (true) {
                             val read = input.read(buffer)

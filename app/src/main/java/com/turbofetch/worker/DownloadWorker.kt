@@ -96,8 +96,23 @@ class DownloadWorker(
             return Result.failure()
         }
 
+        val wantsAudioOnly = current.audioOnly
+
+        // Кгда просят только аудио, качать надо аудиопоток, а не видео:
+        // либо выбранный формат сам аудио, либо парный аудиопоток.
+        // Если аудиопотока нет — звук вытащим из видео через ffmpeg.
+        val audioOnlyFormat: MediaFormat? = if (wantsAudioOnly) {
+            when {
+                videoFormat.hasAudio && !videoFormat.hasVideo -> videoFormat
+                current.audioFormat != null -> current.audioFormat
+                else -> null
+            }
+        } else {
+            null
+        }
+
         // Видео без звука (DASH) требует отдельной аудиодорожки — их потом склеим.
-        val needsSeparateAudio = !videoFormat.hasAudio && !current.audioOnly
+        val needsSeparateAudio = !wantsAudioOnly && !videoFormat.hasAudio
         val audioFormat: MediaFormat? = if (needsSeparateAudio) {
             current.audioFormat
                 ?: current.availableFormats.firstOrNull { it.hasAudio && !it.hasVideo }
@@ -105,19 +120,26 @@ class DownloadWorker(
             null
         }
 
+        // Что качаем первым файлом.
+        val primaryFormat = audioOnlyFormat ?: videoFormat
+
         com.turbofetch.core.Log.i(
-            "Видео: ${videoFormat.label}" +
-                (audioFormat?.let { " + аудио: ${it.label}" } ?: " (со звуком)") +
-                ", заголовки=${videoFormat.headers.keys}",
+            when {
+                wantsAudioOnly && audioOnlyFormat != null ->
+                    "Только аудио: ${audioOnlyFormat.label}"
+                wantsAudioOnly -> "Только аудио: звук вытащим из ${videoFormat.label}"
+                else -> "Видео: ${videoFormat.label}" +
+                    (audioFormat?.let { " + аудио: ${it.label}" } ?: " (со звуком)")
+            } + ", заголовки=${primaryFormat.headers.keys}",
         )
 
         // 2. Имена файлов.
-        val extension = if (needsSeparateAudio) "mp4" else extensionFor(current.audioOnly, videoFormat.mimeType)
+        val extension = if (needsSeparateAudio) "mp4" else extensionFor(wantsAudioOnly, primaryFormat.mimeType)
         val fileName = FileNameTemplate.render(
             template = container.settingsRepository.current().fileNameTemplate,
             title = current.title,
             author = current.author,
-            quality = if (current.audioOnly) "audio" else videoFormat.label,
+            quality = if (wantsAudioOnly) "audio" else videoFormat.label,
             extension = extension,
             id = current.id,
         )
@@ -134,7 +156,7 @@ class DownloadWorker(
             failure = performDownloads(
                 engine = engine,
                 url = current.url,
-                videoFormat = videoFormat,
+                videoFormat = primaryFormat,
                 videoFile = videoFile,
                 audioFormat = audioFormat,
                 audioFile = audioFile,
