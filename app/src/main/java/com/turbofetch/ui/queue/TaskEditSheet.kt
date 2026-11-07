@@ -75,7 +75,9 @@ fun TaskEditSheet(
         // («160 кбит/с») — так же, как считает воркер. Слово «audio» остаётся
         // для YouTube, где звук вытаскивается из видео.
         quality = when {
-            isAudioSource -> task.availableFormats.firstOrNull()?.label.orEmpty()
+            isAudioSource -> task.availableFormats.firstOrNull()?.label
+                .orEmpty()
+                .removePrefix("аудио ")
             audioOnly -> "audio"
             else -> selectedFormat?.label.orEmpty()
         },

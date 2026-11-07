@@ -18,6 +18,8 @@ data class SettingsEntity(
     val theme: String,
     /** Тёмный вариант темы. */
     val darkMode: Boolean,
+    /** Закрывать приложение сразу после «Поделиться». */
+    val closeOnShare: Boolean,
 ) {
     companion object {
         const val SINGLETON_ID = 1
@@ -30,6 +32,7 @@ data class SettingsEntity(
             downloadOverWifiOnly = settings.downloadOverWifiOnly,
             theme = settings.theme.name,
             darkMode = settings.darkMode,
+            closeOnShare = settings.closeOnShare,
         )
     }
 }
@@ -43,4 +46,5 @@ fun SettingsEntity.toDomain(): AppSettings = AppSettings(
     downloadOverWifiOnly = downloadOverWifiOnly,
     theme = runCatching { AppTheme.valueOf(theme) }.getOrDefault(AppTheme.WARM_PAPER),
     darkMode = darkMode,
+    closeOnShare = closeOnShare,
 )

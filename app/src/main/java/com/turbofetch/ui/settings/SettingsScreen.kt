@@ -197,6 +197,14 @@ fun SettingsScreen(
                     viewModel.update { it.copy(downloadOverWifiOnly = value) }
                 },
             )
+            SwitchRow(
+                title = "Закрываться после «Поделиться»",
+                subtitle = "Ссылка уйдёт в очередь, окно приложения не откроется",
+                checked = settings.closeOnShare,
+                onCheckedChange = { value ->
+                    viewModel.update { it.copy(closeOnShare = value) }
+                },
+            )
 
             Spacer(Modifier.height(40.dp))
         }
