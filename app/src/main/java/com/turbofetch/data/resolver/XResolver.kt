@@ -69,7 +69,7 @@ class XResolver(
             ?: error("В твите нет видео")
 
         val variants = videoEntry["variants"]?.jsonArray.orEmpty()
-        val formats = variants.mapNotNull { variant ->
+        val allFormats = variants.mapNotNull { variant ->
             val obj = variant.jsonObject
             val link = obj["url"]?.jsonPrimitive?.contentOrNullSafe() ?: return@mapNotNull null
             val contentType = obj["contentType"]?.jsonPrimitive?.contentOrNullSafe().orEmpty()
@@ -83,9 +83,20 @@ class XResolver(
                 mimeType = contentType.ifBlank { "video/mp4" },
                 url = link,
             )
-        }.sortedByDescending { it.bitrate }
+        }
+
+        // HLS — это .m3u8-плейлист, а не файл: скачав его, получим текст
+        // плейлиста вместо видео. У X рядом с HLS всегда есть mp4-варианты,
+        // поэтому HLS просто убираем из списка. Раньше он попадал первым
+        // (у него самый высокий битрейт), и пресет качества выбирал именно его.
+        val formats = allFormats
+            .filterNot { it.mimeType.contains("mpegURL") }
+            .sortedByDescending { it.bitrate }
 
         if (formats.isEmpty()) {
+            if (allFormats.any { it.mimeType.contains("mpegURL") }) {
+                error("У поста только HLS-поток — приложение такие не качает")
+            }
             error("В твите нет вариантов видео")
         }
 

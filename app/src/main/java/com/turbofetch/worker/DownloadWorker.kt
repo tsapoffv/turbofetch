@@ -46,6 +46,29 @@ class DownloadWorker(
 
     override suspend fun doWork(): Result {
         val taskId = inputData.getString(KEY_TASK_ID) ?: return Result.failure()
+        return try {
+            runTask(taskId)
+        } catch (cancellation: CancellationException) {
+            // Система остановила воркер: сработал лимит foreground-сервиса
+            // типа dataSync, снесли приложение или отменили работу. Задача не
+            // должна остаться в статусе RUNNING — пользователь видел бы
+            // вечную загрузку, которую нельзя ни отменить, ни повторить.
+            //
+            // Отдельный onTimeout()/onStopped() переопределить нельзя:
+            // у CoroutineWorker onStopped объявлен final, а onTimeout в
+            // WorkManager 2.12 не существует. Поэтому ловим отмену здесь.
+            runCatching {
+                container.taskRepository.updateStatus(
+                    taskId,
+                    TaskStatus.CANCELLED,
+                    "Загрузка прервана",
+                )
+            }
+            throw cancellation
+        }
+    }
+
+    private suspend fun runTask(taskId: String): Result {
         val repository: TaskRepository = container.taskRepository
         val engine: DownloadEngine = container.downloadEngine
 
@@ -76,6 +99,20 @@ class DownloadWorker(
             val refreshedAudio = previouslyChosenAudio?.let { old ->
                 info.formats.firstOrNull { it.id == old.id }
             }
+
+            // Если площадка отдала другой поток, недокачанный файл относится к
+            // старому: докачка дописала бы его байты к новому потоку, и файл
+            // получился бы битым. Поэтому при смене потока недокачанное
+            // удаляем и начинаем этот файл с нуля.
+            dropStalePartials(
+                taskId = taskId,
+                videoChanged = previouslyChosen?.id != null &&
+                    refreshed?.id != null &&
+                    previouslyChosen.id != refreshed.id,
+                audioChanged = previouslyChosenAudio?.id != null &&
+                    refreshedAudio?.id != null &&
+                    previouslyChosenAudio.id != refreshedAudio.id,
+            )
 
             current = current.copy(
                 title = info.title,
@@ -136,14 +173,32 @@ class DownloadWorker(
 
         // 2. Имена файлов.
         val extension = if (needsSeparateAudio) "mp4" else extensionFor(wantsAudioOnly, primaryFormat.mimeType)
-        val fileName = FileNameTemplate.render(
-            template = container.settingsRepository.current().fileNameTemplate,
-            title = current.title,
-            author = current.author,
-            quality = if (wantsAudioOnly) "audio" else videoFormat.label,
-            extension = extension,
-            id = current.id,
-        )
+        // Своё имя из шторки редактирования важнее шаблона: пользователь ввёл
+        // его руками. Если его нет — собираем имя по шаблону настроек.
+        val fileName = current.customName?.takeIf { it.isNotBlank() }
+            ?.let { custom ->
+                val safe = FileNameTemplate.sanitize(custom)
+                if (safe.isBlank()) FileNameTemplate.render(
+                    template = container.settingsRepository.current().fileNameTemplate,
+                    title = current.title,
+                    author = current.author,
+                    quality = if (wantsAudioOnly) "audio" else videoFormat.label,
+                    extension = extension,
+                    id = current.id,
+                ) else if (safe.endsWith(".$extension", ignoreCase = true)) {
+                    safe
+                } else {
+                    "$safe.$extension"
+                }
+            }
+            ?: FileNameTemplate.render(
+                template = container.settingsRepository.current().fileNameTemplate,
+                title = current.title,
+                author = current.author,
+                quality = if (wantsAudioOnly) "audio" else videoFormat.label,
+                extension = extension,
+                id = current.id,
+            )
 
         val workDir = File(applicationContext.cacheDir, "downloads").apply { mkdirs() }
         val videoFile = File(workDir, "$taskId.video")
@@ -164,7 +219,8 @@ class DownloadWorker(
                 onProgress = { repository.updateProgress(taskId, it) },
             )
         } catch (cancellation: CancellationException) {
-            // Отмена или срабатывание лимита foreground-сервиса.
+            // Отмена долетает сюда только если случилась до обёртки doWork;
+            // обычный путь перехватывается в doWork.
             repository.updateStatus(taskId, TaskStatus.CANCELLED, "Загрузка прервана")
             throw cancellation
         }
@@ -413,6 +469,26 @@ class DownloadWorker(
         audioOnly -> "audio/mpeg"
         mimeType.isNotBlank() -> mimeType
         else -> "video/mp4"
+    }
+
+    /**
+     * Удаляет недокачанные файлы, если после повторного разбора ссылки
+     * площадка отдала другой поток. Иначе байты старого потока допишутся к
+     * новому и получится битый файл.
+     */
+    private fun dropStalePartials(taskId: String, videoChanged: Boolean, audioChanged: Boolean) {
+        if (!videoChanged && !audioChanged) return
+        val downloads = File(applicationContext.cacheDir, "downloads")
+        val names = buildList {
+            if (videoChanged) add("$taskId.video")
+            if (audioChanged) add("$taskId.audio")
+        }
+        for (name in names) {
+            val stale = File(downloads, name)
+            if (stale.exists() && stale.delete()) {
+                com.turbofetch.core.Log.w("Поток сменился, удалил недокачанный ${stale.name}")
+            }
+        }
     }
 
     companion object {
