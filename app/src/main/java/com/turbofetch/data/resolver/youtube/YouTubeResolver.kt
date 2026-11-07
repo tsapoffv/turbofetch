@@ -9,7 +9,6 @@ import com.turbofetch.domain.resolver.VideoResolver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
-import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.stream.StreamInfo
 
@@ -30,7 +29,7 @@ class YouTubeResolver(
     override val platform: Source = Source.YOUTUBE
 
     init {
-        NewPipe.init(NewPipeDownloader(client))
+        NewPipeInitializer.ensure(client)
     }
 
     override suspend fun resolve(url: String): Result<MediaInfo> = withContext(Dispatchers.IO) {

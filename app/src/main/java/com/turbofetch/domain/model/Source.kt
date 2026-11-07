@@ -7,6 +7,7 @@ enum class Source {
     X,
     INSTAGRAM,
     SOUNDCLOUD,
+    SPOTIFY,
     UNKNOWN,
     ;
 
@@ -18,6 +19,7 @@ enum class Source {
             // в их доменах не встречается, но порядок держим осмысленным.
             host.contains("instagram.com") || host.contains("instagr.am") -> INSTAGRAM
             host.contains("soundcloud.com") -> SOUNDCLOUD
+            host.contains("spotify.com") || host.contains("spotify.link") -> SPOTIFY
             host.contains("x.com") || host.contains("twitter.com") -> X
             else -> UNKNOWN
         }

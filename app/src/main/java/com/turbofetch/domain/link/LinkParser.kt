@@ -64,6 +64,8 @@ object LinkParser {
 
             // SoundCloud: /<юзер>/<слаг трека> — слаг и есть id.
             Source.SOUNDCLOUD -> segments.lastOrNull().orEmpty()
+            // Spotify: идентификатор трека — последний значимый сегмент пути.
+            Source.SPOTIFY -> segments.lastOrNull().orEmpty()
 
             Source.UNKNOWN -> ""
         }
