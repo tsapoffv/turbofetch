@@ -11,7 +11,8 @@
 
 ## 1. Что это за приложение
 
-TurboFetch скачивает видео **напрямую с CDN** площадки: YouTube, TikTok, X.
+TurboFetch скачивает **напрямую с CDN** площадок: YouTube, TikTok, X, Instagram,
+SoundCloud.
 Принципиальное отличие от обычных приложений — нет собственного сервера,
 который режет скорость и вставляет рекламу. Байты файла идут от CDN к телефону.
 
@@ -143,6 +144,8 @@ DI — ручной, без Hilt: `core/di/AppContainer`. Проект мале�
 | `data/remote` | HTTP | `HttpClientFactory`, `SimpleCookieJar` |
 | `data/resolver` | резолверы площадок | `TikTokResolver`, `XResolver` |
 | `data/resolver/youtube` | резолвер YouTube | `YouTubeResolver`, `NewPipeDownloader` |
+| `data/resolver/instagram` | резолвер Instagram | `InstagramResolver`, `InstagramCrawler`, `InstagramShortcode` |
+| `data/resolver/soundcloud` | резолвер SoundCloud | `SoundCloudResolver`, `SoundCloudClientId` |
 | `data/media` | ffmpeg | `FfmpegRunner` |
 | `data/storage` | запись результата | `MediaStoreWriter`, `MediaMuxerMerger` |
 | `data/repo` | репозитории | `TaskRepository`, `FileRepository`, `SettingsRepository` |
@@ -172,7 +175,10 @@ DI — ручной, без Hilt: `core/di/AppContainer`. Проект мале�
 - YouTube: `youtu.be/<id>`, `/shorts/<id>`, `/embed/<id>`, `?v=<id>`, иначе
   последний сегмент пути;
 - TikTok: последний непустой сегмент пути;
-- X: сегмент после `/status/`.
+- X: сегмент после `/status/`;
+- Instagram: последний значимый сегмент пути — shortcode (`/p/`, `/reel/`,
+  `/reels/`, `/tv/`, `/share/p/`);
+- SoundCloud: последний сегмент пути — slug трека.
 
 **Шаг 3. Задача попадает в базу — `QueueViewModel.addLink`.**
 Создаётся `DownloadTask` со статусом `PENDING`, пишется в Room через
@@ -349,6 +355,68 @@ TikTok отдаёт готовые данные именно мобильным 
 
 Слой X самый хрупкий: эндпоинт не документирован и может измениться.
 
+### 6.4. Instagram — `data/resolver/instagram/InstagramResolver`
+
+Публичные посты, Reels и карусели — **без логина и без cookies**.
+
+Цепочка:
+
+1. `mediaId = base64-decode(shortcode)` по алфавиту `A-Za-z0-9-_` —
+   чистая функция `InstagramShortcode`, тестируется офлайн;
+2. `GET https://www.instagram.com/p/<shortcode>/` с User-Agent
+   `Googlebot/2.1` — URL всегда канонический, поэтому `/share/p/` и
+   `/reels/` работают так же, как `/p/`;
+3. разбор `<script data-sjs>` блоков, в которых встречается
+   `"pk":"<mediaId>"`, — JSON разбирается и якорь ищется по `pk`
+   (`InstagramCrawler`).
+
+Два решения, которые стоит знать:
+
+- **Якорь по `pk` обязателен.** Страница содержит около 30 чужих `pk`
+  (соседние посты того же аккаунта) — «первый `video_versions` в странице»
+  вернёт чужой ролик.
+- **Ловушка «soft block».** На удалённый, приватный и несуществующий пост
+  Instagram отдаёт HTTP 200 и одинаковый SPA-шелл. Поэтому проверяется форма
+  тела, а не код ответа, и все три случая дают одну формулировку ошибки.
+
+Форматы: progressive (`video_versions`) и DASH (`video_dash_manifest`).
+DASH лучше — 720×1280 @ 2.87 Мбит/с против 480×854 @ 1.47 Мбит/с, — и в нём
+есть лестница из шести представлений; выбираем по `width×height`, затем по
+`bandwidth`. В ссылке внутри MPD стоит `&amp;` вместо `&`, его обязательно
+распаковывать, иначе CDN отдаёт 403.
+
+**Аудио Instagram не отдаёт.** В лицензионных роликах в JSON стоит
+`has_audio: false` и `should_mute_audio: true` — площадка вырезает музыку
+сама. Поэтому в интерфейсе честно пишется «без звука», а не «со звуком».
+
+### 6.5. SoundCloud — `data/resolver/soundcloud/SoundCloudResolver`
+
+**Прогрессивного MP3 у SoundCloud больше нет**: в августе 2026 весь каталог
+переведён на AAC, доступен только HLS. Цепочка:
+
+1. `client_id` — из JS-бандлов `a-v2.sndcdn.com` (`SoundCloudClientId`).
+   Ссылка на бандл лежит в тексте страницы, а не в атрибуте `script`, и нужен
+   **настольный** User-Agent: с мобильным сайт отдаётся заново (Next.js), где
+   бандлов нет. Значение общее у всех, кто скрейпит SoundCloud, поэтому может
+   троттлиться — лечится кэшем и переизвлечением при 401/403;
+2. `resolve` → метаданные и `media.transcodings[]`;
+3. выбор пресета: `aac_160k`, при его отсутствии `aac_96k`; `abr_*` отдаёт
+   пустой объект, `snipped` — это превью, не трек;
+4. `stream/hls` → подписанная ссылка на m3u8 (подпись живёт ~2 часа).
+
+Сегменты CDN отдаются без единого заголовка — авторизует только подпись в
+ссылке.
+
+Загрузка — собственный `domain/engine/HlsDownloader`: разбор m3u8, HEAD-запросы
+ради честного процента, склейка `init.mp4` + `.m4s` байтами в валидный fMP4.
+Свой загрузчик вместо ffmpeg — потому что ffmpeg у нас только arm64, и
+потому что так работает на любом устройстве.
+
+Контейнер по умолчанию — `.m4a` в `Music/TurboFetch`, без перекодирования;
+`.mp3` — только по явному выбору юзера (тогда нужен ffmpeg). Промежуточный
+файл всегда с расширением исходного потока, иначе вход и выход ffmpeg
+совпадают и он падает с «Output same as Input».
+
 ---
 
 ## 7. Склейка видео и звука
@@ -478,14 +546,19 @@ SHRINE }`, состояние вкладки и флага настроек — 
 
 ## 11. Тесты
 
-32 юнит-теста, все проходят без сети (2 пропущены — сетевые спайки).
+55 юнит-тестов, все проходят без сети (6 пропущены — сетевые спайки).
 
-- `LinkParserTest` (9) — разбор ссылок всех площадок;
+- `LinkParserTest` (13) — разбор ссылок всех площадок;
+- `InstagramShortcodeTest` (3) — shortcode → mediaId (чистая функция);
+- `InstagramCrawlerTest` (7) — разбор сохранённой страницы Instagram:
+  якорь по `pk`, карусель, DASH-манифест, распаковка `&amp;`;
+- `MediaNamingTest` (5) — контейнер, расширение и MIME по набору форматов;
 - `MarkovChainTest` (7) — генератор цепи Маркова;
 - `FileNameTemplateTest` (5), `QualityPresetTest` (5) — подстановки в шаблон
   имени и подбор формата под пресет качества;
 - `SimpleCookieJarTest` (4) — семантика cookie;
-- `YouTubeResolverSpikeTest`, `YouTubeDownloadSpikeTest` — спайки по сети,
+- `YouTubeResolverSpikeTest`, `YouTubeDownloadSpikeTest`,
+  `InstagramResolverSpikeTest`, `SoundCloudResolverSpikeTest` — спайки по сети,
   включаются явно: `./gradlew :app:testDebugUnitTest -Dturbofetch.network=true`.
 
 Два нюанса, из-за которых в `build.gradle.kts` есть нестандартные настройки:
