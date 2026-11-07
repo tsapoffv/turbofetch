@@ -52,7 +52,8 @@ class AppContainer(context: Context) {
      * Один HTTP-клиент на всё приложение: у него общее хранилище cookie,
      * а TikTok отдаёт файл по CDN только с cookie того же клиента.
      */
-    private val httpClient by lazy { HttpClientFactory.create() }
+    /** Общий HTTP-клиент: резолверы и догрузка обложек используют один. */
+    val httpClient by lazy { HttpClientFactory.create() }
 
     private val resolvers: Map<Source, VideoResolver> by lazy {
         mapOf<Source, VideoResolver>(

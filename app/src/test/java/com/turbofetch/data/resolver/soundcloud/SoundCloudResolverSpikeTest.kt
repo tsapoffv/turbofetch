@@ -59,4 +59,25 @@ class SoundCloudResolverSpikeTest {
             info.formats.none { it.id.startsWith("abr") },
         )
     }
+
+    @Test
+    fun `разбирает сет SoundCloud как набор треков`() = runBlocking {
+        assumeTrue("Нужен доступ в интернет", System.getProperty("turbofetch.network") == "true")
+
+        val resolver = SoundCloudResolver()
+        val result = resolver.resolve(
+            "https://soundcloud.com/softdotsc/sets/crisis-management",
+        )
+        val info = result.getOrElse { error("Не удалось разобрать: $it") }
+
+        println("=== СЕТ: ${info.title}, треков ${info.collectionTracks.size}")
+        info.collectionTracks.take(3).forEach { track ->
+            println("    ${track.title} — ${track.artist} (${track.durationSeconds} с)")
+        }
+
+        assertEquals(Source.SOUNDCLOUD, info.source)
+        assertTrue("список треков пуст", info.collectionTracks.isNotEmpty())
+        assertTrue("у трека нет ссылки", info.collectionTracks.all { !it.url.isNullOrBlank() })
+        assertTrue("обложка сета не найдена", !info.thumbnailUrl.isNullOrBlank())
+    }
 }

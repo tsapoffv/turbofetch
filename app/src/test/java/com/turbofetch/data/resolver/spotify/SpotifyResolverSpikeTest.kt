@@ -54,4 +54,45 @@ class SpotifyResolverSpikeTest {
             onFailure = { throw it },
         )
     }
+
+    @Test
+    fun `читает альбом со списком треков`() = runBlocking {
+        assumeTrue("Нужен доступ в интернет", network)
+
+        val resolver = SpotifyResolver()
+        val result = resolver.resolve(
+            "https://open.spotify.com/album/5Z9iiGl2FcIfa3BMiv6OIw",
+        )
+
+        val info = result.getOrElse { error -> error("Не удалось разобрать: $error") }
+        println("=== АЛЬБОМ: ${info.title} треков ${info.collectionTracks.size}")
+        info.collectionTracks.take(3).forEach { track ->
+            println("    ${track.title} — ${track.artist} (${track.durationSeconds} с)")
+        }
+
+        assertEquals("Whenever You Need Somebody", info.title)
+        assertTrue("список треков пуст", info.collectionTracks.isNotEmpty())
+        assertTrue("обложка не найдена", !info.thumbnailUrl.isNullOrBlank())
+        assertTrue(
+            "у альбома одна обложка, у треков — нет",
+            info.collectionTracks.none { it.thumbUrl != null },
+        )
+    }
+
+    @Test
+    fun `читает плейлист и берёт обложки первых трёх треков`() = runBlocking {
+        assumeTrue("Нужен доступ в интернет", network)
+
+        val resolver = SpotifyResolver()
+        val result = resolver.resolve(
+            "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M",
+        )
+
+        val info = result.getOrElse { error -> error("Не удалось разобрать: $error") }
+        println("=== ПЛЕЙЛИСТ: ${info.title} треков ${info.collectionTracks.size}")
+
+        assertTrue("список треков пуст", info.collectionTracks.isNotEmpty())
+        assertEquals(3, info.collectionTracks.take(3).count { it.thumbUrl != null })
+        assertTrue("у всех отмечен по умолчанию", info.collectionTracks.all { it.selected })
+    }
 }

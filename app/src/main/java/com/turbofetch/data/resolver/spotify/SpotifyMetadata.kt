@@ -1,5 +1,6 @@
 package com.turbofetch.data.resolver.spotify
 
+import com.turbofetch.domain.model.CollectionTrack
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -10,6 +11,114 @@ import kotlinx.serialization.json.jsonPrimitive
 import java.util.Base64
 import okhttp3.OkHttpClient
 import okhttp3.Request
+
+/**
+ * Общие мелочи разбора страниц Spotify.
+ *
+ * И embed-плеер, и обычная страница трека, и страницы альбома с плейлистом
+ * устроены одинаково: HTML с одним блоком JSON. Вынесено отдельно, чтобы
+ * разбор трека и разбор коллекции не расходились.
+ */
+internal object SpotifyPage {
+
+    /**
+     * Настольный User-Agent.
+     *
+     * С мобильным Spotify отдаёт другую страницу, где данных меньше.
+     */
+    const val USER_AGENT =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+
+    val json = Json { ignoreUnknownKeys = true; isLenient = true }
+
+    /** Скрипт с JSON внутри embed-страницы. */
+    val SCRIPT_JSON = Regex(
+        """<script[^>]*id="(__NEXT_DATA__|__PRELOADED_STATE__)"[^>]*>(.*?)</script>""",
+        setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
+    )
+
+    /** Скрипт с initialState обычной страницы трека (base64). */
+    val INITIAL_STATE = Regex(
+        """<script[^>]*id="initialState"[^>]*>(.*?)</script>""",
+        setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
+    )
+
+    val OG_IMAGE = Regex("""<meta[^>]+property="og:image"[^>]+content="([^"]+)"""")
+
+    /** Кусок JSON прямо в тексте страницы. */
+    val JSON_FRAGMENT = Regex("""\{[^{}]*"name"\s*:\s*"[^"]*"[^{}]*\}""")
+
+    /** Скачать страницу. */
+    fun fetchText(
+        client: OkHttpClient,
+        url: String,
+        userAgent: String = USER_AGENT,
+    ): String {
+        val request = Request.Builder()
+            .url(url)
+            .header("User-Agent", userAgent)
+            .build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) error("Spotify вернул HTTP ${response.code}")
+            return response.body?.string().orEmpty()
+        }
+    }
+
+    /** Разбор `<script id="__NEXT_DATA__">`. */
+    fun parseNextData(html: String): JsonObject? {
+        val match = SCRIPT_JSON.find(html) ?: return null
+        val payload = match.groupValues[2].trim()
+        if (payload.isEmpty()) return null
+        return runCatching { json.parseToJsonElement(payload).jsonObject }.getOrNull()
+    }
+
+    /** Объект `props.pageProps.state.data.entity` — трек или коллекция. */
+    fun entityOf(tree: JsonObject): JsonObject? =
+        tree["props"]?.jsonObject?.get("pageProps")?.jsonObject
+            ?.get("state")?.jsonObject?.get("data")?.jsonObject
+            ?.get("entity")?.jsonObject
+
+    /**
+     * Обложка.
+     *
+     * В embed-странице она лежит в `visualIdentity.image[]` (варианты
+     * 64/300/640 пикселей — берём самый большой), у плейлиста — в
+     * `coverArt.sources[]`, в старой разметке — в `images[]`.
+     */
+    fun coverOf(node: JsonObject): String? {
+        node["visualIdentity"]?.let { identity ->
+            val images = runCatching { identity.jsonObject["image"]?.jsonArray }.getOrNull()
+            val best = images
+                ?.mapNotNull { image ->
+                    val url = (image.jsonObject["url"] as? JsonPrimitive)?.content
+                    val size = (image.jsonObject["maxHeight"] as? JsonPrimitive)
+                        ?.content?.toIntOrNull() ?: 0
+                    url?.let { size to it }
+                }
+                ?.maxByOrNull { it.first }
+            if (best != null) return best.second
+        }
+        node["coverArt"]?.let { coverArt ->
+            val sources = runCatching { coverArt.jsonObject["sources"]?.jsonArray }.getOrNull()
+            val url = sources?.firstNotNullOfOrNull { source ->
+                (source.jsonObject["url"] as? JsonPrimitive)?.content
+            }
+            if (url != null) return url
+        }
+        node["images"]?.let { images ->
+            val array = runCatching { images.jsonArray }.getOrNull() ?: return null
+            val url = array.firstNotNullOfOrNull { image ->
+                (image.jsonObject["url"] as? JsonPrimitive)?.content
+            }
+            if (url != null) return url
+        }
+        node["album"]?.let { album ->
+            if (album is JsonObject) return coverOf(album)
+        }
+        return null
+    }
+}
 
 /** Метаданные трека Spotify. */
 data class SpotifyTrack(
@@ -31,27 +140,10 @@ data class SpotifyTrack(
  * Источники (берём первый, кто ответил):
  *
  * 1. `open.spotify.com/embed/track/<id>` — страница с JSON внутри;
- * 2. `open.spotify.com/oembed?url=...` — простой JSON: название и обложка.
- *
- * Разбор embed-страницы сделан рекурсивным поиском по JSON-дереву, а не
- * по жёстким путям: разметка страницы меняется, и зацепка за конкретный
- * путь ломается первая.
+ * 2. `open.spotify.com/track/<id>` — но только с небраузерным User-Agent;
+ * 3. `open.spotify.com/oembed?url=...` — простое JSON: название и обложка.
  */
 object SpotifyMetadata {
-
-    private val json = Json { ignoreUnknownKeys = true; isLenient = true }
-
-    /** Скрипты, внутри которых может лежать JSON с данными трека. */
-    /** Скрипт с initialState обычной страницы трека (base64). */
-    private val INITIAL_STATE = Regex(
-        """<script[^>]*id="initialState"[^>]*>(.*?)</script>""",
-        setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
-    )
-
-    private val SCRIPT_JSON = Regex(
-        """<script[^>]*id="(__NEXT_DATA__|__PRELOADED_STATE__)"[^>]*>(.*?)</script>""",
-        setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
-    )
 
     /**
      * Достаёт метаданные трека.
@@ -59,8 +151,6 @@ object SpotifyMetadata {
      * @throws IllegalStateException если ни один источник не дал данных.
      */
     suspend fun fetch(client: OkHttpClient, trackId: String): SpotifyTrack {
-        // Порядок источников: embed (полные данные) → обычная страница
-        // трека → oEmbed (только название и обложка).
         val fromEmbed = runCatching { fetchFromEmbed(client, trackId) }.getOrNull()
         val fromPage = if (fromEmbed == null) {
             runCatching { fetchFromTrackPage(client, trackId) }.getOrNull()
@@ -84,81 +174,21 @@ object SpotifyMetadata {
         )
     }
 
-    /**
-     * Запасной источник: обычная страница трека.
-     *
-     * Там данные лежат в `<script id="initialState">` — это base64, внутри
-     * JSON с объектом трека по ключу `spotify:track:<id>`.
-     *
-     * Страница отдаёт данные только небраузерным клиентам: с обычным
-     * Chrome User-Agent приходит оболочка плеера без метаданных, поэтому
-     * запрашиваем заведомо «небраузерным» агентом.
-     */
-    private fun fetchFromTrackPage(client: OkHttpClient, trackId: String): SpotifyTrack? {
-        val html = fetchText(
-            client,
-            "https://open.spotify.com/track/$trackId",
-            userAgent = "curl/8.5.0",
-        )
-        val encoded = INITIAL_STATE.find(html)?.groupValues?.get(1)?.trim().orEmpty()
-        if (encoded.isEmpty()) return null
-
-        val decoded = runCatching {
-            String(Base64.getDecoder().decode(encoded), Charsets.UTF_8)
-        }.getOrNull() ?: return null
-
-        val tree = runCatching { json.parseToJsonElement(decoded) }.getOrNull() ?: return null
-        val entity = findByKey(tree, "spotify:track:$trackId") ?: return null
-
-        val name = stringOf(entity, "name") ?: return null
-        return SpotifyTrack(
-            id = trackId,
-            title = name,
-            artist = artistOf(entity).orEmpty(),
-            album = albumOf(entity),
-            durationSeconds = durationOf(entity)?.let { (it / 1000).toInt() },
-            coverUrl = coverOf(entity),
-        )
-    }
-
-    /** Ищет объект по ключу в JSON-дереве (например, `spotify:track:<id>`). */
-    private fun findByKey(
-        node: kotlinx.serialization.json.JsonElement,
-        key: String,
-    ): JsonObject? {
-        when (node) {
-            is JsonObject -> {
-                node[key]?.let { value ->
-                    if (value is JsonObject) return value
-                }
-                node.values.forEach { value ->
-                    findByKey(value, key)?.let { return it }
-                }
-            }
-
-            is JsonArray -> {
-                node.forEach { element ->
-                    findByKey(element, key)?.let { return it }
-                }
-            }
-
-            else -> Unit
-        }
-        return null
-    }
-
     /** Метаданные со страницы плеера. */
     private fun fetchFromEmbed(client: OkHttpClient, trackId: String): SpotifyTrack? {
-        val html = fetchText(client, "https://open.spotify.com/embed/track/$trackId")
-        for (match in SCRIPT_JSON.findAll(html)) {
-            val payload = match.groupValues[2].trim()
-            if (payload.isEmpty()) continue
-            val tree = runCatching { json.parseToJsonElement(payload) }.getOrNull() ?: continue
-            val found = findTrack(tree) ?: continue
-            if (found.title.isNotBlank()) {
-                return found.copy(
+        val html = SpotifyPage.fetchText(client, "https://open.spotify.com/embed/track/$trackId")
+        val tree = SpotifyPage.parseNextData(html)
+        val entity = tree?.let { SpotifyPage.entityOf(it) }
+        if (entity != null) {
+            val title = stringOf(entity, "name") ?: stringOf(entity, "title")
+            if (!title.isNullOrBlank()) {
+                return SpotifyTrack(
                     id = trackId,
-                    coverUrl = found.coverUrl ?: ogImage(html),
+                    title = title,
+                    artist = artistOf(entity).orEmpty(),
+                    album = albumOf(entity),
+                    durationSeconds = durationOf(entity)?.let { (it / 1000).toInt() },
+                    coverUrl = SpotifyPage.coverOf(entity) ?: ogImage(html),
                 )
             }
         }
@@ -171,6 +201,45 @@ object SpotifyMetadata {
         )
     }
 
+    /**
+     * Запасной источник: обычная страница трека.
+     *
+     * Там данные лежат в `<script id="initialState">` — это base64, внутри
+     * JSON с объектом трека по ключу `spotify:track:<id>`.
+     *
+     * Страница отдаёт данные только небраузерным клиентам: с обычным
+     * Chrome User-Agent приходит оболочка плеера без метаданных, поэтому
+     * запрашиваем заведомо «небраузерным» агентом.
+     */
+    private fun fetchFromTrackPage(client: OkHttpClient, trackId: String): SpotifyTrack? {
+        val html = SpotifyPage.fetchText(
+            client,
+            "https://open.spotify.com/track/$trackId",
+            userAgent = "curl/8.5.0",
+        )
+        val encoded = SpotifyPage.INITIAL_STATE.find(html)?.groupValues?.get(1)?.trim().orEmpty()
+        if (encoded.isEmpty()) return null
+
+        val decoded = runCatching {
+            String(Base64.getDecoder().decode(encoded), Charsets.UTF_8)
+        }.getOrNull() ?: return null
+
+        val tree = runCatching {
+            SpotifyPage.json.parseToJsonElement(decoded)
+        }.getOrNull() ?: return null
+        val entity = findByKey(tree, "spotify:track:$trackId") ?: return null
+
+        val name = stringOf(entity, "name") ?: return null
+        return SpotifyTrack(
+            id = trackId,
+            title = name,
+            artist = artistOf(entity).orEmpty(),
+            album = albumOf(entity),
+            durationSeconds = durationOf(entity)?.let { (it / 1000).toInt() },
+            coverUrl = SpotifyPage.coverOf(entity),
+        )
+    }
+
     /** Метаданные через oEmbed. */
     private fun fetchFromOembed(
         client: OkHttpClient,
@@ -178,8 +247,10 @@ object SpotifyMetadata {
     ): SpotifyTrack? {
         val url = "https://open.spotify.com/oembed?url=" +
             "https%3A%2F%2Fopen.spotify.com%2Ftrack%2F$trackId"
-        val body = fetchText(client, url)
-        val root = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull() ?: return null
+        val body = SpotifyPage.fetchText(client, url)
+        val root = runCatching {
+            SpotifyPage.json.parseToJsonElement(body).jsonObject
+        }.getOrNull() ?: return null
 
         val title = root["title"]?.jsonPrimitive?.content.orEmpty()
         if (title.isBlank()) return null
@@ -189,7 +260,7 @@ object SpotifyMetadata {
         return SpotifyTrack(
             id = trackId,
             title = parts.firstOrNull().orEmpty().ifBlank { title },
-            artist = parts.drop(1).joinToString(" · ").ifBlank { "" },
+            artist = parts.drop(1).joinToString(" · "),
             album = null,
             durationSeconds = null,
             coverUrl = root["thumbnail_url"]?.jsonPrimitive?.content,
@@ -214,10 +285,9 @@ object SpotifyMetadata {
                         artist = artists.orEmpty(),
                         album = albumOf(node),
                         durationSeconds = duration?.let { (it / 1000).toInt() },
-                        coverUrl = coverOf(node),
+                        coverUrl = SpotifyPage.coverOf(node),
                     )
                 }
-                // Дальше ищем глубже.
                 node.values.forEach { value ->
                     findTrack(value)?.let { return it }
                 }
@@ -236,9 +306,37 @@ object SpotifyMetadata {
 
     /** Тот же поиск, но по сырому тексту страницы. */
     private fun findTrackInText(html: String): SpotifyTrack? {
-        for (fragment in JSON_FRAGMENT.findAll(html)) {
-            val tree = runCatching { json.parseToJsonElement(fragment.value) }.getOrNull() ?: continue
+        for (fragment in SpotifyPage.JSON_FRAGMENT.findAll(html)) {
+            val tree = runCatching {
+                SpotifyPage.json.parseToJsonElement(fragment.value)
+            }.getOrNull() ?: continue
             findTrack(tree)?.let { return it }
+        }
+        return null
+    }
+
+    /** Ищет объект по ключу в JSON-дереве (например, `spotify:track:<id>`). */
+    private fun findByKey(
+        node: kotlinx.serialization.json.JsonElement,
+        key: String,
+    ): JsonObject? {
+        when (node) {
+            is JsonObject -> {
+                node[key]?.let { value ->
+                    if (value is JsonObject) return value
+                }
+                node.values.forEach { value ->
+                    findByKey(value, key)?.let { return it }
+                }
+            }
+
+            is JsonArray -> {
+                node.forEach { element ->
+                    findByKey(element, key)?.let { return it }
+                }
+            }
+
+            else -> Unit
         }
         return null
     }
@@ -306,80 +404,21 @@ object SpotifyMetadata {
     }
 
     /**
-     * Обложка.
+     * Обложка трека.
      *
-     * В embed-странице она лежит в `visualIdentity.image[]` (там есть
-     * варианты 64/300/640 пикселей — берём самый большой), в старой
-     * разметке — в `coverArt.sources[]` или `images[]`.
+     * В списке плейлиста обложек нет — площадка отдаёт их только на
+     * странице самого трека. Здесь она и берётся.
      */
-    private fun coverOf(node: JsonObject): String? {
-        node["visualIdentity"]?.let { identity ->
-            val images = runCatching { identity.jsonObject["image"]?.jsonArray }.getOrNull()
-            val best = images
-                ?.mapNotNull { image ->
-                    val url = (image.jsonObject["url"] as? JsonPrimitive)?.content
-                    val size = (image.jsonObject["maxHeight"] as? JsonPrimitive)
-                        ?.content?.toIntOrNull() ?: 0
-                    url?.let { size to it }
-                }
-                ?.maxByOrNull { it.first }
-            if (best != null) return best.second
-        }
-        return coverOfLegacy(node)
-    }
-
-    /** Обложка в старой разметке. */
-    private fun coverOfLegacy(node: JsonObject): String? {
-        node["coverArt"]?.let { coverArt ->
-            val sources = coverArt.jsonObject["sources"]?.jsonArray
-            val url = sources?.firstNotNullOfOrNull { source ->
-                (source.jsonObject["url"] as? JsonPrimitive)?.content
-            }
-            if (url != null) return url
-        }
-        node["images"]?.let { images ->
-            val array = runCatching { images.jsonArray }.getOrNull() ?: return null
-            val url = array.firstNotNullOfOrNull { image ->
-                (image.jsonObject["url"] as? JsonPrimitive)?.content
-            }
-            if (url != null) return url
-        }
-        node["album"]?.let { album ->
-            if (album is JsonObject) return coverOf(album)
-        }
-        return null
-    }
+    suspend fun trackCover(client: OkHttpClient, trackId: String): String? = runCatching {
+        val html = SpotifyPage.fetchText(client, "https://open.spotify.com/embed/track/$trackId")
+        SpotifyPage.parseNextData(html)
+            ?.let { SpotifyPage.entityOf(it) }
+            ?.let { SpotifyPage.coverOf(it) }
+    }.onFailure { error ->
+        com.turbofetch.core.Log.e("Обложка трека $trackId: ${error.message}")
+    }.getOrNull()
 
     /** Картинка из og:image — запасной вариант. */
     private fun ogImage(html: String): String? =
-        OG_IMAGE.find(html)?.groupValues?.get(1)?.takeIf { it.isNotBlank() }
-
-    private fun fetchText(
-        client: OkHttpClient,
-        url: String,
-        userAgent: String = USER_AGENT,
-    ): String {
-        val request = Request.Builder()
-            .url(url)
-            .header("User-Agent", userAgent)
-            .build()
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) error("Spotify вернул HTTP ${response.code}")
-            return response.body?.string().orEmpty()
-        }
-    }
-
-    /**
-     * Настольный User-Agent.
-     *
-     * С мобильным Spotify отдаёт другую страницу, где данных меньше.
-     */
-    private const val USER_AGENT =
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-            "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-
-    private val OG_IMAGE = Regex("""<meta[^>]+property="og:image"[^>]+content="([^"]+)"""")
-
-    /** Кусок JSON прямо в тексте страницы. */
-    private val JSON_FRAGMENT = Regex("""\{[^{}]*"name"\s*:\s*"[^"]*"[^{}]*\}""")
+        SpotifyPage.OG_IMAGE.find(html)?.groupValues?.get(1)?.takeIf { it.isNotBlank() }
 }

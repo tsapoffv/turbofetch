@@ -5,10 +5,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -55,6 +57,7 @@ import com.turbofetch.domain.model.Source
 import com.turbofetch.domain.model.TaskStatus
 import com.turbofetch.ui.theme.AccentButton
 import com.turbofetch.ui.theme.AccentDivider
+import com.turbofetch.ui.theme.accentBrush
 import com.turbofetch.ui.theme.AccentProgress
 import com.turbofetch.ui.theme.deco
 import com.turbofetch.ui.theme.gradientTextStyle
@@ -76,6 +79,9 @@ fun QueueScreen(
     val message by viewModel.messages.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var editing by remember { mutableStateOf<DownloadTask?>(null) }
+
+    /** Раскрыт ли список треков альбома или плейлиста. */
+    var expandedCollectionId by remember { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
     val reorderState = rememberReorderState(listState) { from, to -> viewModel.moveTask(from, to) }
 
@@ -111,6 +117,35 @@ fun QueueScreen(
                 ) {
                     itemsIndexed(tasks, key = { _, task -> task.id }) { index, task ->
                         val dragging = reorderState.draggingItemIndex == index
+                        if (task.isCollection) {
+                            CollectionTaskRow(
+                                task = task,
+                                expanded = expandedCollectionId == task.id,
+                                onToggleExpand = {
+                                    val wasExpanded = expandedCollectionId == task.id
+                                    expandedCollectionId =
+                                        if (wasExpanded) null else task.id
+                                    // При раскрытии подтягиваем обложки треков:
+                                    // в списке плейлиста площадка их не даёт.
+                                    if (!wasExpanded) viewModel.loadMissingCovers(task.id)
+                                },
+                                onToggleTrack = { trackId ->
+                                    viewModel.toggleCollectionTrack(task.id, trackId)
+                                },
+                                onDownloadSelected = {
+                                    viewModel.expandCollection(
+                                        task.id,
+                                        task.collectionTracks
+                                            .filter { it.selected }
+                                            .map { it.id }
+                                            .toSet(),
+                                    )
+                                },
+                                onDelete = { viewModel.delete(task.id) },
+                            )
+                            AccentDivider()
+                            return@itemsIndexed
+                        }
                         TaskRow(
                             task = task,
                             dragging = dragging,
@@ -139,7 +174,13 @@ fun QueueScreen(
                 }
             }
 
-            if (tasks.any { it.status == TaskStatus.READY || it.status == TaskStatus.PENDING }) {
+            // Кнопка появляется, только если есть что качать: коллекция
+            // ждёт выбора треков и кнопкой «Скачать всё» не качается.
+            if (tasks.any {
+                    (it.status == TaskStatus.READY || it.status == TaskStatus.PENDING) &&
+                        !it.isCollection
+                }
+            ) {
                 AccentButton(
                     text = "Скачать всё",
                     emoji = "⬇️",
@@ -350,19 +391,35 @@ private fun TaskRow(
     onRetry: () -> Unit,
     onOpen: () -> Unit,
 ) {
-    Column(
+    // Трек из альбома или плейлиста отодвинут вправо и отделён полоской:
+    // видно, что он часть коллекции, а не самостоятельная закачка.
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .background(
-                if (dragging) {
-                    MaterialTheme.colorScheme.surfaceContainerHighest
-                } else {
-                    MaterialTheme.colorScheme.background
-                },
-            )
-            .padding(vertical = 14.dp),
+            .height(IntrinsicSize.Min),
     ) {
+        if (task.isNested) {
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .fillMaxHeight()
+                    .background(accentBrush()),
+            )
+            Spacer(Modifier.width(12.dp))
+        }
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .clickable(onClick = onClick)
+                .background(
+                    if (dragging) {
+                        MaterialTheme.colorScheme.surfaceContainerHighest
+                    } else {
+                        MaterialTheme.colorScheme.background
+                    },
+                )
+                .padding(vertical = 14.dp),
+        ) {
         Row(verticalAlignment = Alignment.Top) {
             Icon(
                 imageVector = Icons.Default.DragHandle,
@@ -412,6 +469,18 @@ private fun TaskRow(
                             }
                             if (task.audioOnly) append(" · mp3")
                         },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                // Трек из альбома или плейлиста: отдельной строкой, чтобы
+                // название коллекции не обрезалось.
+                task.parentTitle?.let { parent ->
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = "из «$parent»",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -477,6 +546,7 @@ private fun TaskRow(
                 TextButton2("Скачать", onDownload)
             }
         }
+        }
     }
 }
 
@@ -491,14 +561,4 @@ private fun TextButton2(text: String, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(vertical = 2.dp),
     )
-}
-
-private fun Source.label(): String = when (this) {
-    Source.YOUTUBE -> "YouTube"
-    Source.TIKTOK -> "TikTok"
-    Source.X -> "X"
-    Source.INSTAGRAM -> "Instagram"
-    Source.SOUNDCLOUD -> "SoundCloud"
-    Source.SPOTIFY -> "Spotify"
-    Source.UNKNOWN -> "Ссылка"
 }
