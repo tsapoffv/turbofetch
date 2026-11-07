@@ -57,6 +57,15 @@ class MediaStoreWriter(private val context: Context) {
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
 
+        // Файл с таким именем мог остаться от прошлой загрузки. Ничего не
+        // удаляем — подбираем свободное имя, как это делает сама галерея
+        // («Трек (1).m4a»). На части прошивок вставка с занятым именем
+        // вообще не возвращает ответ и зависает.
+        values.put(
+            MediaStore.MediaColumns.DISPLAY_NAME,
+            freeDisplayName(resolver, collection, displayName, relativePath),
+        )
+
         val uri: Uri = resolver.insert(collection, values)
             ?: error("Не удалось создать запись в MediaStore")
 
@@ -69,6 +78,48 @@ class MediaStoreWriter(private val context: Context) {
         resolver.update(uri, values, null, null)
 
         return uri.toString()
+    }
+
+    /**
+     * Подбирает имя, которого ещё нет в нашей папке.
+     *
+     * «Трек.m4a» → «Трек (1).m4a» → «Трек (2).m4a» и так далее. Старые
+     * файлы остаются на месте: удалять их без явного разрешения юзера
+     * нельзя.
+     */
+    private fun freeDisplayName(
+        resolver: android.content.ContentResolver,
+        collection: Uri,
+        displayName: String,
+        relativePath: String,
+    ): String {
+        val taken = runCatching {
+            resolver.query(
+                collection,
+                arrayOf(MediaStore.MediaColumns.DISPLAY_NAME),
+                "${MediaStore.MediaColumns.RELATIVE_PATH} = ?",
+                arrayOf(relativePath),
+                null,
+            )?.use { cursor ->
+                buildSet {
+                    while (cursor.moveToNext()) {
+                        add(cursor.getString(0) ?: continue)
+                    }
+                }
+            } ?: emptySet()
+        }.getOrDefault(emptySet())
+
+        if (displayName !in taken) return displayName
+
+        val dot = displayName.lastIndexOf('.')
+        val stem = if (dot > 0) displayName.substring(0, dot) else displayName
+        val extension = if (dot > 0) displayName.substring(dot) else ""
+        var counter = 1
+        while (true) {
+            val candidate = "$stem ($counter)$extension"
+            if (candidate !in taken) return candidate
+            counter++
+        }
     }
 
     private fun saveViaLegacyFile(source: File, displayName: String, isAudio: Boolean): String {

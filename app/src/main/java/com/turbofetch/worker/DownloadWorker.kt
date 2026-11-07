@@ -344,6 +344,9 @@ class DownloadWorker(
                 source = current.source,
                 thumbnailUrl = current.thumbnailUrl,
                 createdAt = System.currentTimeMillis(),
+                // Ссылка на источник: задача сейчас же удалится из очереди,
+                // а в истории файл должен остаться кликабельным.
+                sourceUrl = current.url,
             ),
         )
 
