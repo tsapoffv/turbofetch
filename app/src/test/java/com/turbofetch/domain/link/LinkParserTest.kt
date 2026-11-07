@@ -80,6 +80,26 @@ class LinkParserTest {
     }
 
     @Test
+    fun `разбирает ссылку Spotify`() {
+        val parsed = LinkParser.parse(
+            "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT",
+        )
+
+        assertEquals(Source.SPOTIFY, parsed?.source)
+        assertEquals("4cOdK2wGLETKBW3PvgPWqT", parsed?.id)
+    }
+
+    @Test
+    fun `разбирает ссылку Spotify с параметрами и локализацией`() {
+        val parsed = LinkParser.parse(
+            "https://open.spotify.com/intl-ru/track/4cOdK2wGLETKBW3PvgPWqT?si=abc123",
+        )
+
+        assertEquals(Source.SPOTIFY, parsed?.source)
+        assertEquals("4cOdK2wGLETKBW3PvgPWqT", parsed?.id)
+    }
+
+    @Test
     fun `находит ссылку внутри текста`() {
         val parsed = LinkParser.parse("Смотри это https://youtu.be/xyz987 - прикольно")
 
