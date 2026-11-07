@@ -44,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -327,7 +328,8 @@ private fun EmptyQueue() {
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            "Поделитесь ссылкой из YouTube, TikTok или X — она появится здесь.",
+            "Поделитесь ссылкой из YouTube, TikTok, X, Instagram или SoundCloud — " +
+                "она появится здесь.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -388,15 +390,27 @@ private fun TaskRow(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.height(4.dp))
-                Text(
-                    text = buildString {
-                        append(task.source.label())
-                        task.selectedFormat?.let { append(" · ${it.label}") }
-                        if (task.audioOnly) append(" · mp3")
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                // Пометка площадки: иконка рядом со своей подписью.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        painter = painterResource(task.source.iconRes()),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = buildString {
+                            append(task.source.label())
+                            task.selectedFormat?.let { append(" · ${it.label}") }
+                            if (task.audioOnly) append(" · mp3")
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             Spacer(Modifier.width(8.dp))
             Icon(
@@ -476,5 +490,7 @@ private fun Source.label(): String = when (this) {
     Source.YOUTUBE -> "YouTube"
     Source.TIKTOK -> "TikTok"
     Source.X -> "X"
+    Source.INSTAGRAM -> "Instagram"
+    Source.SOUNDCLOUD -> "SoundCloud"
     Source.UNKNOWN -> "Ссылка"
 }
