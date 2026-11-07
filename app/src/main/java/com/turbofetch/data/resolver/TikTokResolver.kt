@@ -10,6 +10,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
@@ -118,15 +119,14 @@ class TikTokResolver(
 
     /** Новая вёрстка: `__DEFAULT_SCOPE__["webapp.reflow.video.detail"].itemInfo.itemStruct`. */
     private fun extractFromUniversal(html: String): JsonObject? {
-        val blob = extractScript(html, UNIVERSAL_SCRIPT_ID) ?: return null
-        val root = blob.asJsonObjectOrNull() ?: return null
+        val root = extractScriptObject(html, UNIVERSAL_SCRIPT_ID) ?: return null
         val scope = root["__DEFAULT_SCOPE__"]?.asJsonObjectOrNull() ?: return null
 
-        // Сначала пробуем ожидаемый ключ, потом — любой другой с роликом:
-        // TikTok периодически переименовывает скоупы.
-        val preferred = scope[VIDEO_DETAIL_SCOPE_KEY]?.asJsonObjectOrNull()
-        itemStructOf(preferred)?.let { return it }
-        for ((_, value) in scope) {
+        // Сначала пробуем ожидаемый ключ, потом — любой другой скоуп с роликом:
+        // TikTok периодически переименовывает их.
+        itemStructOf(scope[VIDEO_DETAIL_SCOPE_KEY]?.asJsonObjectOrNull())?.let { return it }
+        for ((key, value) in scope) {
+            if (!key.contains(VIDEO_DETAIL_SCOPE_KEY)) continue
             itemStructOf(value?.asJsonObjectOrNull())?.let { return it }
         }
         return null
@@ -134,8 +134,7 @@ class TikTokResolver(
 
     /** Старая вёрстка: `api-data` → `videoDetail.itemInfo.itemStruct`. */
     private fun extractFromApiData(html: String): JsonObject? {
-        val blob = extractScript(html, API_DATA_SCRIPT_ID) ?: return null
-        val root = blob.asJsonObjectOrNull() ?: return null
+        val root = extractScriptObject(html, API_DATA_SCRIPT_ID) ?: return null
         return root["videoDetail"]?.asJsonObjectOrNull()
             ?.get("itemInfo")?.asJsonObjectOrNull()
             ?.get("itemStruct")?.asJsonObjectOrNull()
@@ -222,9 +221,17 @@ class TikTokResolver(
         }
     }
 
+    /** Содержимое `<script id="...">`, разобранное как JSON-объект. */
+    private fun extractScriptObject(html: String, id: String): JsonObject? {
+        val body = extractScript(html, id) ?: return null
+        return runCatching { json.parseToJsonElement(body).asJsonObjectOrNull() }.getOrNull()
+    }
+
     private fun extractScript(html: String, id: String): String? {
-        val match = SCRIPT_REGEX.find(html) { it.groupValues[1] == id } ?: return null
-        return match.groupValues[2]
+        for (match in SCRIPT_REGEX.findAll(html)) {
+            if (match.groupValues[1] == id) return match.groupValues[2]
+        }
+        return null
     }
 
     private companion object {
