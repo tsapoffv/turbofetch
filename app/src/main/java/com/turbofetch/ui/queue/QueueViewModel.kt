@@ -9,18 +9,23 @@ import androidx.lifecycle.viewModelScope
 import com.turbofetch.TurboFetchApp
 import com.turbofetch.domain.link.LinkParser
 import com.turbofetch.domain.model.AppSettings
+import com.turbofetch.data.resolver.spotify.SpotifyMetadata
+import com.turbofetch.domain.model.CollectionTrack
 import com.turbofetch.domain.model.DownloadTask
 import com.turbofetch.domain.model.MediaFormat
 import com.turbofetch.domain.model.MediaNaming
 import com.turbofetch.domain.model.QualityPreset
+import com.turbofetch.domain.model.Source
 import com.turbofetch.domain.model.TaskStatus
 import com.turbofetch.worker.DownloadScheduler
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 class QueueViewModel(application: Application) : AndroidViewModel(application) {
@@ -39,6 +44,9 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
 
     val settings = settingsRepository.observe()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings())
+
+    /** Задачи, для которых сейчас идёт догрузка обложек. */
+    private val loadingCovers = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
     private val _messages = MutableStateFlow<String?>(null)
     val messages: StateFlow<String?> = _messages.asStateFlow()
@@ -80,6 +88,116 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         )
         repository.upsert(task)
         probe(task)
+    }
+
+    /**
+     * Отмечает трек в альбоме или плейлисте.
+     *
+     * Отметки живут в самой задаче: можно свернуть карточку, вернуться
+     * позже и продолжить выбор.
+     */
+    fun toggleCollectionTrack(taskId: String, trackId: String) {
+        viewModelScope.launch {
+            val task = repository.get(taskId) ?: return@launch
+            val updated = task.collectionTracks.map { track ->
+                if (track.id == trackId) track.copy(selected = !track.selected) else track
+            }
+            repository.upsert(task.copy(collectionTracks = updated))
+        }
+    }
+
+    /**
+     * Разворачивает альбом или плейлист в отдельные задачи.
+     *
+     * Каждый выбранный трек становится своей задачей — со своим прогрессом
+     * и возможностью отменить его по отдельности. В названии задачи
+     * остаётся пометка, из какой коллекции трек: так видно, что он часть
+     * альбома, а не самостоятельная закачка.
+     */
+    fun expandCollection(taskId: String, selectedIds: Set<String>) {
+        viewModelScope.launch {
+            val task = repository.get(taskId) ?: return@launch
+            val selected = task.collectionTracks.filter { it.id in selectedIds }
+            if (selected.isEmpty()) {
+                _messages.value = "Не выбран ни один трек"
+                return@launch
+            }
+
+            val settings = settingsRepository.current()
+            selected.forEach { track ->
+                val child = DownloadTask(
+                    id = UUID.randomUUID().toString(),
+                    url = trackUrl(task.source, track),
+                    source = task.source,
+                    createdAt = System.currentTimeMillis(),
+                    audioOnly = settings.defaultAudioOnly,
+                    parentTitle = task.title,
+                )
+                repository.upsert(child)
+                probe(child)
+            }
+
+            repository.delete(taskId)
+            _messages.value = "В очередь добавлено треков: ${selected.size}"
+        }
+    }
+
+    /** Ссылка на трек коллекции: у SoundCloud она готовая, у Spotify — по id. */
+    private fun trackUrl(source: Source, track: CollectionTrack): String =
+        track.url ?: when (source) {
+            Source.SPOTIFY -> "https://open.spotify.com/track/${track.id}"
+            else -> track.id
+        }
+
+    /**
+     * Догружает обложки треков, которых не было в списке площадки.
+     *
+     * У Spotify в списке плейлиста обложек нет: площадка отдаёт их только
+     * на странице трека. Запрашиваем по одной и обновляем задачу — карточка
+     * подхватит обновление сама.
+     */
+    fun loadMissingCovers(taskId: String) {
+        // Догрузка должна идти один раз: карточка перерисовывается при
+        // каждом обновлении задачи, а запросов здесь десятки.
+        if (!loadingCovers.add(taskId)) return
+        viewModelScope.launch {
+            try {
+                // Сеть — только в фоне: запросов тут десятки, и на главном
+                // потоке они бы заморозили интерфейс.
+                withContext(Dispatchers.IO) { loadMissingCoversInner(taskId) }
+            } finally {
+                loadingCovers.remove(taskId)
+            }
+        }
+    }
+
+    private suspend fun loadMissingCoversInner(taskId: String) {
+            val task = repository.get(taskId) ?: return
+            if (task.source != Source.SPOTIFY) return
+
+            var tracks = task.collectionTracks
+            val pending = tracks.filter { it.thumbUrl.isNullOrBlank() }
+            if (pending.isEmpty()) return
+
+            com.turbofetch.core.Log.i(
+                "Обложки: догружаю ${pending.size} для «${task.title}»",
+            )
+            var done = 0
+            for (track in pending) {
+                val cover = SpotifyMetadata.trackCover(container.httpClient, track.id)
+                if (cover != null) {
+                    tracks = tracks.map {
+                        if (it.id == track.id) it.copy(thumbUrl = cover) else it
+                    }
+                }
+                done++
+                // Обновляем задачу пачками: список на экране подхватывает
+                // обложки по мере появления, а не после всех запросов.
+                if (done % 5 == 0) {
+                    repository.upsert(task.copy(collectionTracks = tracks))
+                }
+            }
+            repository.upsert(task.copy(collectionTracks = tracks))
     }
 
     /** Запрашивает метаданные и список форматов. */
@@ -124,6 +242,9 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
                         audioFormat = pairedAudio,
                         audioOnly = settings.defaultAudioOnly,
                         status = TaskStatus.READY,
+                        // Альбом или плейлист: сохраняем список треков,
+                        // чтобы карточка могла показать их с выбором.
+                        collectionTracks = info.collectionTracks,
                     ),
                 )
             },
@@ -152,6 +273,9 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
             val wifiOnly = settingsRepository.current().downloadOverWifiOnly
             tasks.value
                 .filter { it.status == TaskStatus.READY || it.status == TaskStatus.PENDING }
+                // Коллекцию (альбом или плейлист) качать нельзя: сначала
+                // юзер выбирает треки, и они становятся отдельными задачами.
+                .filterNot { it.isCollection }
                 .forEach { task ->
                     repository.updateStatus(task.id, TaskStatus.QUEUED)
                     scheduler.enqueue(task.id, wifiOnly)

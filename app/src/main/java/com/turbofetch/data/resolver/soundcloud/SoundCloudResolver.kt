@@ -1,6 +1,7 @@
 package com.turbofetch.data.resolver.soundcloud
 
 import com.turbofetch.data.remote.HttpClientFactory
+import com.turbofetch.domain.model.CollectionTrack
 import com.turbofetch.domain.model.MediaFormat
 import com.turbofetch.domain.model.MediaInfo
 import com.turbofetch.domain.model.Source
@@ -43,6 +44,41 @@ class SoundCloudResolver(
     override suspend fun resolve(url: String): Result<MediaInfo> = withContext(Dispatchers.IO) {
         runCatching {
             val clientId = clientIds.obtain()
+
+            // Сет (плейлист) — это не трек, а набор треков: показываем
+            // список с выбором, как у Spotify-альбомов.
+            if (url.contains("/sets/")) {
+                val meta = resolveWithClient(url, clientId)
+                val tracks = meta["tracks"]?.jsonArray.orEmpty().mapNotNull { item ->
+                    val track = item.jsonObject
+                    val trackUrl = track["permalink_url"]?.jsonPrimitive?.content
+                        ?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                    CollectionTrack(
+                        id = track["permalink"]?.jsonPrimitive?.content ?: trackUrl,
+                        title = track["title"]?.jsonPrimitive?.content.orEmpty(),
+                        artist = track["user"]?.jsonObject
+                            ?.get("username")?.jsonPrimitive?.content.orEmpty(),
+                        durationSeconds = (
+                            track["duration"]?.jsonPrimitive?.content?.toLongOrNull() ?: 0L
+                            ).toInt() / 1000,
+                        thumbUrl = track["artwork_url"]?.jsonPrimitive?.content,
+                        url = trackUrl,
+                    )
+                }
+                if (tracks.isEmpty()) error("В сете нет треков")
+                com.turbofetch.core.Log.i("SoundCloud: сет, треков ${tracks.size}")
+                return@runCatching MediaInfo(
+                    source = Source.SOUNDCLOUD,
+                    title = meta["title"]?.jsonPrimitive?.content.orEmpty().ifBlank { "SoundCloud" },
+                    author = meta["user"]?.jsonObject
+                        ?.get("username")?.jsonPrimitive?.content,
+                    durationSeconds = tracks.sumOf { it.durationSeconds },
+                    thumbnailUrl = meta["artwork_url"]?.jsonPrimitive?.content,
+                    formats = emptyList(),
+                    collectionTracks = tracks,
+                )
+            }
+
             com.turbofetch.core.Log.i("SoundCloud: разбираю трек")
             val meta = resolveWithClient(url, clientId)
             com.turbofetch.core.Log.i("SoundCloud: трек разобран")

@@ -56,6 +56,26 @@ object Migrations {
         }
     }
 
+    /** 5 → 6: треки альбома/плейлиста и исходная ссылка файла. */
+    val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "ALTER TABLE `tasks` ADD COLUMN `collectionTracks` TEXT NOT NULL DEFAULT '[]'",
+            )
+            db.execSQL(
+                "ALTER TABLE `tasks` ADD COLUMN `parentTitle` TEXT",
+            )
+            db.execSQL(
+                "ALTER TABLE `files` ADD COLUMN `sourceUrl` TEXT",
+            )
+        }
+    }
+
     /** Все миграции по порядку. */
-    val ALL: Array<Migration> = arrayOf(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+    val ALL: Array<Migration> = arrayOf(
+        MIGRATION_2_3,
+        MIGRATION_3_4,
+        MIGRATION_4_5,
+        MIGRATION_5_6,
+    )
 }

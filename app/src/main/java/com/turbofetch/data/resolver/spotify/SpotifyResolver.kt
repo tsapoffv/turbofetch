@@ -48,6 +48,25 @@ class SpotifyResolver(
             val trackId = LinkParser.parse(url)?.id?.takeIf { it.isNotBlank() }
                 ?: error("Не удалось извлечь идентификатор трека")
 
+            // Альбом и плейлист — это не файл, а набор треков. Их разбираем
+            // отдельно: возвращаем список, а юзер выберет нужное.
+            collectionKindOf(url)?.let { kind ->
+                val collection = SpotifyCollectionReader.read(client, trackId, kind)
+                com.turbofetch.core.Log.i(
+                    "Spotify: ${kind.name.lowercase()} «${collection.name}», " +
+                        "треков ${collection.tracks.size}",
+                )
+                return@runCatching MediaInfo(
+                    source = Source.SPOTIFY,
+                    title = collection.name,
+                    author = collection.subtitle,
+                    durationSeconds = collection.tracks.sumOf { it.durationSeconds },
+                    thumbnailUrl = collection.coverUrl,
+                    formats = emptyList(),
+                    collectionTracks = collection.tracks,
+                )
+            }
+
             val meta = SpotifyMetadata.fetch(client, trackId)
             com.turbofetch.core.Log.i(
                 "Spotify: ${meta.artist} — ${meta.title} (${meta.durationSeconds ?: -1} с)",
@@ -101,6 +120,13 @@ class SpotifyResolver(
                 formats = audio,
             )
         }
+    }
+
+    /** Вид коллекции по ссылке: альбом или плейлист. */
+    private fun collectionKindOf(url: String): SpotifyCollectionKind? = when {
+        url.contains("/album/") -> SpotifyCollectionKind.ALBUM
+        url.contains("/playlist/") -> SpotifyCollectionKind.PLAYLIST
+        else -> null
     }
 
     /**

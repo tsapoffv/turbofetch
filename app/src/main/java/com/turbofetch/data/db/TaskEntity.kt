@@ -3,6 +3,7 @@ package com.turbofetch.data.db
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.turbofetch.domain.model.CollectionTrack
 import com.turbofetch.domain.model.DownloadTask
 import com.turbofetch.domain.model.MediaFormat
 import com.turbofetch.domain.model.Source
@@ -31,6 +32,10 @@ data class TaskEntity(
     @ColumnInfo(name = "position")
     val order: Int,
     val needsRefresh: Boolean,
+    /** Треки альбома или плейлиста (пусто у обычных задач). */
+    val collectionTracks: List<CollectionTrack>,
+    /** Название коллекции, из которой взяли трек. */
+    val parentTitle: String?,
 )
 
 fun TaskEntity.toDomain(): DownloadTask = DownloadTask(
@@ -53,6 +58,8 @@ fun TaskEntity.toDomain(): DownloadTask = DownloadTask(
     createdAt = createdAt,
     order = order,
     needsRefresh = needsRefresh,
+    collectionTracks = collectionTracks,
+    parentTitle = parentTitle,
 )
 
 fun DownloadTask.toEntity(): TaskEntity = TaskEntity(
@@ -75,4 +82,6 @@ fun DownloadTask.toEntity(): TaskEntity = TaskEntity(
     createdAt = createdAt,
     order = order,
     needsRefresh = needsRefresh,
+    collectionTracks = collectionTracks,
+    parentTitle = parentTitle,
 )

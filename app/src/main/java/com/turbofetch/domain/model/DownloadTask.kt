@@ -62,7 +62,27 @@ data class DownloadTask(
      * перед следующей попыткой нужно заново разобрать ссылку.
      */
     val needsRefresh: Boolean = false,
+    /**
+     * Треки альбома или плейлиста, если ссылка ведёт на коллекцию.
+     *
+     * Пока список непустой, задача — это «обзор» коллекции с выбором
+     * треков, а не скачивание.
+     */
+    val collectionTracks: List<CollectionTrack> = emptyList(),
+    /**
+     * Название коллекции, из которой взяли этот трек.
+     *
+     * Нужен, чтобы в очереди было видно: трек — часть альбома, а не
+     * самостоятельная закачка.
+     */
+    val parentTitle: String? = null,
 ) {
     /** Что показывать в списке, пока метаданных нет. */
     val displayTitle: String get() = title ?: url
+
+    /** Задача-обзор коллекции: треки ещё не выбраны для скачивания. */
+    val isCollection: Boolean get() = collectionTracks.isNotEmpty()
+
+    /** Трек из альбома или плейлиста. */
+    val isNested: Boolean get() = parentTitle != null
 }
