@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.HorizontalDivider
@@ -33,6 +34,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.turbofetch.domain.model.DownloadedFile
@@ -57,6 +60,7 @@ fun FilesScreen(
     val message by viewModel.messages.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
 
     LaunchedEffect(message) {
         message?.let {
@@ -124,6 +128,17 @@ fun FilesScreen(
                                     .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                                 runCatching { context.startActivity(intent) }
                             },
+                            onCopyLink = {
+                                // Копируем исходную ссылку на площадку:
+                                // по ней источник можно открыть в браузере.
+                                val url = file.sourceUrl
+                                if (url.isNullOrBlank()) {
+                                    viewModel.notifyLinkCopied()
+                                } else {
+                                    clipboard.setText(AnnotatedString(url))
+                                    viewModel.notifyLinkCopied()
+                                }
+                            },
                             onDelete = { viewModel.delete(file) },
                         )
                         AccentDivider()
@@ -154,6 +169,7 @@ fun FilesScreen(
 private fun FileRow(
     file: DownloadedFile,
     onOpen: () -> Unit,
+    onCopyLink: () -> Unit,
     onDelete: () -> Unit,
 ) {
     Row(
@@ -187,6 +203,15 @@ private fun FileRow(
             contentDescription = "Открыть",
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(22.dp),
+        )
+        Spacer(Modifier.width(14.dp))
+        Icon(
+            imageVector = Icons.Default.ContentCopy,
+            contentDescription = "Скопировать ссылку",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .size(20.dp)
+                .clickable(onClick = onCopyLink),
         )
         Spacer(Modifier.width(14.dp))
         Icon(

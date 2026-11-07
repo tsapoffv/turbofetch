@@ -53,6 +53,11 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Ссылка на источник скопирована в буфер обмена. */
+    fun notifyLinkCopied() {
+        _messages.value = "Ссылка скопирована"
+    }
+
     fun consumeMessage() {
         _messages.value = null
     }

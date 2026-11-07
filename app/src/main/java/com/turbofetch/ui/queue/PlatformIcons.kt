@@ -10,6 +10,17 @@ import com.turbofetch.domain.model.Source
  * Брендовых знаков в Material Icons нет, поэтому у каждой площадки свой
  * вектор в `res/drawable`. Векторы одноцветные — цвет им задаёт тема.
  */
+/** Подпись площадки для интерфейса. */
+fun Source.label(): String = when (this) {
+    Source.YOUTUBE -> "YouTube"
+    Source.TIKTOK -> "TikTok"
+    Source.X -> "X"
+    Source.INSTAGRAM -> "Instagram"
+    Source.SOUNDCLOUD -> "SoundCloud"
+    Source.SPOTIFY -> "Spotify"
+    Source.UNKNOWN -> "Ссылка"
+}
+
 @DrawableRes
 fun Source.iconRes(): Int = when (this) {
     Source.YOUTUBE -> R.drawable.ic_source_youtube

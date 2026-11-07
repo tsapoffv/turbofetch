@@ -23,6 +23,8 @@ data class FileEntity(
     val source: String,
     val thumbnailUrl: String?,
     val createdAt: Long,
+    /** Исходная ссылка на площадке — чтобы её можно было скопировать. */
+    val sourceUrl: String?,
 )
 
 fun FileEntity.toDomain(): DownloadedFile = DownloadedFile(
@@ -36,6 +38,7 @@ fun FileEntity.toDomain(): DownloadedFile = DownloadedFile(
     source = runCatching { Source.valueOf(source) }.getOrDefault(Source.UNKNOWN),
     thumbnailUrl = thumbnailUrl,
     createdAt = createdAt,
+    sourceUrl = sourceUrl,
 )
 
 fun DownloadedFile.toEntity(): FileEntity = FileEntity(
@@ -49,4 +52,5 @@ fun DownloadedFile.toEntity(): FileEntity = FileEntity(
     source = source.name,
     thumbnailUrl = thumbnailUrl,
     createdAt = createdAt,
+    sourceUrl = sourceUrl,
 )
