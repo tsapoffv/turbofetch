@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.turbofetch.domain.model.DownloadTask
 import com.turbofetch.domain.model.FileNameTemplate
+import com.turbofetch.domain.model.MediaNaming
 
 /**
  * Шторка редактирования одной задачи: качество, звук, mp3 и имя файла.
@@ -61,16 +62,24 @@ fun TaskEditSheet(
     val selectedFormat = allVideoFormats.firstOrNull { it.id == selectedFormatId }
     val needsSeparateAudio = selectedFormat != null && !selectedFormat.hasAudio
 
+    // Источник без видео (SoundCloud): площадка сама отдаёт звук, и мы
+    // сохраняем его как есть — m4a. mp3 появляется только по запросу.
+    val isAudioSource = MediaNaming.isAudioOnlySource(task.availableFormats)
+    val container = MediaNaming.container(task.availableFormats, audioOnly)
+
     val previewName = FileNameTemplate.render(
         template = template,
         title = task.title,
         author = task.author,
-        quality = if (audioOnly) {
-            "audio"
-        } else {
-            selectedFormat?.label.orEmpty()
+        // Для площадок, отдающих только звук, в имя идёт подпись потока
+        // («160 кбит/с») — так же, как считает воркер. Слово «audio» остаётся
+        // для YouTube, где звук вытаскивается из видео.
+        quality = when {
+            isAudioSource -> task.availableFormats.firstOrNull()?.label.orEmpty()
+            audioOnly -> "audio"
+            else -> selectedFormat?.label.orEmpty()
         },
-        extension = if (audioOnly) "mp3" else "mp4",
+        extension = MediaNaming.extension(container),
         id = task.id,
     )
 
@@ -136,9 +145,20 @@ fun TaskEditSheet(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Только аудио (mp3)", style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            "Отдельный аудиопоток, без перекодирования",
+                            if (isAudioSource) {
+                                "Конвертировать в mp3"
+                            } else {
+                                "Только аудио (mp3)"
+                            },
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                        Text(
+                            if (isAudioSource) {
+                                "По умолчанию сохраняем как M4A — без перекодирования"
+                            } else {
+                                "Отдельный аудиопоток, без перекодирования"
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

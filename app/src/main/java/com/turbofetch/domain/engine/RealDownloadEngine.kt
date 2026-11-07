@@ -2,6 +2,7 @@ package com.turbofetch.domain.engine
 
 import com.turbofetch.data.remote.HttpClientFactory
 import com.turbofetch.domain.link.LinkParser
+import com.turbofetch.domain.model.FormatKind
 import com.turbofetch.domain.model.MediaInfo
 import com.turbofetch.domain.model.Source
 import com.turbofetch.domain.resolver.VideoResolver
@@ -23,6 +24,7 @@ import java.io.IOException
 class RealDownloadEngine(
     private val resolvers: Map<Source, VideoResolver>,
     private val client: OkHttpClient = HttpClientFactory.create(),
+    private val hlsDownloader: HlsDownloader = HlsDownloader(client),
 ) : DownloadEngine {
 
     override suspend fun probe(url: String): Result<MediaInfo> {
@@ -38,11 +40,24 @@ class RealDownloadEngine(
     }
 
     override fun download(request: DownloadRequest): Flow<DownloadProgress> = flow {
+        com.turbofetch.core.Log.i(
+            "Скачиваю: kind=${request.format.kind} url=${request.format.url?.take(60)}",
+        )
         emit(DownloadProgress.Preparing)
 
         val directUrl = request.format.url
         if (directUrl.isNullOrBlank()) {
             emit(DownloadProgress.Failed("У выбранного формата нет прямой ссылки"))
+            return@flow
+        }
+
+        // Плейлист — это не файл, а десятки сегментов: качать его одним
+        // запросом нельзя. Так отдаёт SoundCloud.
+        if (request.format.kind == FormatKind.HLS_PLAYLIST) {
+            com.turbofetch.core.Log.i("HLS-плейлист: $directUrl")
+            hlsDownloader.download(directUrl, request.outputFile).collect { progress ->
+                emit(progress)
+            }
             return@flow
         }
 

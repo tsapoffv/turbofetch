@@ -18,7 +18,9 @@ import com.turbofetch.domain.engine.DownloadProgress
 import com.turbofetch.domain.engine.DownloadRequest
 import com.turbofetch.domain.model.DownloadedFile
 import com.turbofetch.domain.model.FileNameTemplate
+import com.turbofetch.domain.model.FormatKind
 import com.turbofetch.domain.model.MediaFormat
+import com.turbofetch.domain.model.MediaNaming
 import com.turbofetch.domain.model.TaskStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -83,6 +85,7 @@ class DownloadWorker(
         val needsProbe = current.selectedFormat?.url.isNullOrBlank() || current.needsRefresh
         if (needsProbe) {
             repository.updateStatus(taskId, TaskStatus.PROBING)
+            com.turbofetch.core.Log.i("Разбираю ссылку заново: ${current.url}")
             val probe = engine.probe(current.url)
             val info = probe.getOrElse { error ->
                 repository.updateStatus(taskId, TaskStatus.FAILED, error.message)
@@ -161,18 +164,42 @@ class DownloadWorker(
         // Что качаем первым файлом.
         val primaryFormat = audioOnlyFormat ?: videoFormat
 
+        // Токен качества для имени файла.
+        //
+        // У площадок, которые отдают только звук (SoundCloud), в имени
+        // полезнее битрейт, а не слово «audio»: «Flickermood_160 кбит_с.mp3»
+        // читается лучше, чем «Flickermood_audio.mp3». Для YouTube, где звук
+        // вытаскивается из видеопотока, слово «audio» остаётся — там своего
+        // аудиопотока с подписью нет.
+        val qualityToken = when {
+            MediaNaming.isAudioOnlySource(current.availableFormats) ->
+                qualityLabel(primaryFormat)
+            wantsAudioOnly -> "audio"
+            else -> qualityLabel(videoFormat)
+        }
+
         com.turbofetch.core.Log.i(
             when {
                 wantsAudioOnly && audioOnlyFormat != null ->
                     "Только аудио: ${audioOnlyFormat.label}"
                 wantsAudioOnly -> "Только аудио: звук вытащим из ${videoFormat.label}"
-                else -> "Видео: ${videoFormat.label}" +
-                    (audioFormat?.let { " + аудио: ${it.label}" } ?: " (со звуком)")
+                else -> "Видео: ${videoFormat.label}" + when {
+                    audioFormat != null -> " + аудио: ${audioFormat.label}"
+                    // Instagram сам вырезает музыку из части роликов —
+                    // говорим об этом честно, а не «со звуком».
+                    !videoFormat.hasAudio -> " (без звука)"
+                    else -> " (со звуком)"
+                }
             } + ", заголовки=${primaryFormat.headers.keys}",
         )
 
         // 2. Имена файлов.
-        val extension = if (needsSeparateAudio) "mp4" else extensionFor(wantsAudioOnly, primaryFormat.mimeType)
+        //
+        // Контейнер выбирается по правилам MediaNaming: площадка, которая
+        // сама отдаёт звук (SoundCloud), сохраняется как есть — m4a;
+        // mp3 появляется только когда юзер явно попросил только аудио.
+        val outputContainer = MediaNaming.container(current.availableFormats, wantsAudioOnly)
+        val extension = if (needsSeparateAudio) "mp4" else MediaNaming.extension(outputContainer)
         // Своё имя из шторки редактирования важнее шаблона: пользователь ввёл
         // его руками. Если его нет — собираем имя по шаблону настроек.
         val fileName = current.customName?.takeIf { it.isNotBlank() }
@@ -182,7 +209,7 @@ class DownloadWorker(
                     template = container.settingsRepository.current().fileNameTemplate,
                     title = current.title,
                     author = current.author,
-                    quality = if (wantsAudioOnly) "audio" else videoFormat.label,
+                    quality = qualityToken,
                     extension = extension,
                     id = current.id,
                 ) else if (safe.endsWith(".$extension", ignoreCase = true)) {
@@ -195,13 +222,21 @@ class DownloadWorker(
                 template = container.settingsRepository.current().fileNameTemplate,
                 title = current.title,
                 author = current.author,
-                quality = if (wantsAudioOnly) "audio" else videoFormat.label,
+                quality = qualityToken,
                 extension = extension,
                 id = current.id,
             )
 
         val workDir = File(applicationContext.cacheDir, "downloads").apply { mkdirs() }
-        val videoFile = File(workDir, "$taskId.video")
+        // Промежуточный файл всегда с расширением ИСХОДНОГО потока, а не
+        // итогового контейнера: иначе при конвертации в mp3 вход и выход
+        // ffmpeg совпадут («Output same as Input»).
+        val intermediateExtension = when {
+            primaryFormat.kind == FormatKind.HLS_PLAYLIST -> "m4a"
+            primaryFormat.mimeType.contains("webm") -> "webm"
+            else -> "mp4"
+        }
+        val videoFile = File(workDir, "$taskId.$intermediateExtension")
         val audioFile = audioFormat?.let { File(workDir, "$taskId.audio") }
 
         repository.updateStatus(taskId, TaskStatus.RUNNING)
@@ -258,7 +293,19 @@ class DownloadWorker(
         }
 
         // 4. Если просили только аудио — перекодируем в mp3.
-        val finalFile = if (current.audioOnly) {
+        //
+        // Для источника, который сам отдаёт звук (SoundCloud), файл уже
+        // готов — m4a кладём как есть, без потери качества.
+        val finalFile = if (outputContainer == MediaNaming.Container.MP3) {
+            if (!container.ffmpegRunner.isAvailable) {
+                repository.updateStatus(
+                    taskId,
+                    TaskStatus.FAILED,
+                    "mp3 на этом устройстве недоступен: ffmpeg собран только под " +
+                        "arm64. Оставьте M4A — он играется везде.",
+                )
+                return Result.failure()
+            }
             val mp3 = File(workDir, "$taskId.mp3")
             val conversion = container.ffmpegRunner.convertToMp3(mergedFile, mp3)
             if (conversion.isFailure) {
@@ -272,12 +319,12 @@ class DownloadWorker(
         }
 
         // 5. Готовый файл — в галерею.
-        val mimeType = mimeTypeFor(current.audioOnly, videoFormat.mimeType)
+        val mimeType = MediaNaming.mimeType(outputContainer, videoFormat.mimeType)
         val uri = container.mediaStoreWriter.save(
             source = finalFile,
             displayName = fileName,
             mimeType = mimeType,
-            isAudio = current.audioOnly,
+            isAudio = MediaNaming.isAudio(outputContainer),
         )
         repository.updateOutput(taskId, uri)
 
@@ -458,18 +505,11 @@ class DownloadWorker(
         }
     }
 
-    private fun extensionFor(audioOnly: Boolean, mimeType: String): String = when {
-        audioOnly -> "mp3"
-        mimeType.contains("webm") -> "webm"
-        mimeType.contains("mp4") -> "mp4"
-        else -> "mp4"
-    }
-
-    private fun mimeTypeFor(audioOnly: Boolean, mimeType: String): String = when {
-        audioOnly -> "audio/mpeg"
-        mimeType.isNotBlank() -> mimeType
-        else -> "video/mp4"
-    }
+    /**
+     * Короткое имя качества для файла: «720p», а не «720p · лучшее».
+     */
+    private fun qualityLabel(format: MediaFormat): String =
+        if (format.height > 0) "${format.height}p" else format.label
 
     /**
      * Удаляет недокачанные файлы, если после повторного разбора ссылки

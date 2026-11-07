@@ -39,10 +39,10 @@ object MediaNaming {
     /**
      * Контейнер по умолчанию для набора форматов.
      *
-     * @param wantMp3 юзер явно попросил mp3 (только для аудио-источников).
+     * @param wantMp3 юзер явно попросил только аудио — тогда mp3.
      */
     fun container(formats: List<MediaFormat>, wantMp3: Boolean): Container = when {
-        wantMp3 && isAudioOnlySource(formats) -> Container.MP3
+        wantMp3 -> Container.MP3
         isAudioOnlySource(formats) -> Container.M4A
         else -> Container.VIDEO
     }
@@ -55,8 +55,8 @@ object MediaNaming {
     }
 
     /** MIME-тип для MediaStore. */
-    fun mimeType(container: Container): String = when (container) {
-        Container.VIDEO -> "video/mp4"
+    fun mimeType(container: Container, sourceMimeType: String = ""): String = when (container) {
+        Container.VIDEO -> sourceMimeType.takeIf { it.isNotBlank() } ?: "video/mp4"
         Container.M4A -> "audio/mp4"
         Container.MP3 -> "audio/mpeg"
     }
