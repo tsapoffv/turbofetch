@@ -402,7 +402,14 @@ private fun TaskRow(
                     Text(
                         text = buildString {
                             append(task.source.label())
-                            task.selectedFormat?.let { append(" · ${it.label}") }
+                            task.selectedFormat?.let { format ->
+                                append(" · ${format.label}")
+                                // Instagram вырезает музыку из части роликов
+                                // и не отдаёт звук вообще — говорим об этом.
+                                if (format.hasVideo && !format.hasAudio) {
+                                    append(" · без звука")
+                                }
+                            }
                             if (task.audioOnly) append(" · mp3")
                         },
                         style = MaterialTheme.typography.bodySmall,

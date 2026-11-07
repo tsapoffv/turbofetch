@@ -30,6 +30,11 @@ object InstagramCrawler {
         RegexOption.DOT_MATCHES_ALL,
     )
 
+    /** Обложка публикации в мета-теге. */
+    private val OG_IMAGE = Regex(
+        """<meta[^>]+property="og:image"[^>]+content="([^"]+)"""",
+    )
+
     /** Один видеофайл публикации. */
     data class Video(
         val url: String,
@@ -88,6 +93,12 @@ object InstagramCrawler {
      */
     fun parse(html: String, mediaId: Long): Post? {
         val needle = "\"pk\":\"$mediaId\""
+        // Обложка в og:image есть всегда, а в JSON — не у всех публикаций.
+        val fallbackImage = OG_IMAGE.find(html)
+            ?.groupValues?.get(1)
+            ?.replace("&amp;", "&")
+            ?.takeIf { it.isNotBlank() }
+
         for (match in SCRIPT_BLOCK.findAll(html)) {
             val text = match.groupValues[1]
             if (!text.contains(needle)) continue
@@ -101,7 +112,9 @@ object InstagramCrawler {
             return Post(
                 code = items.first().code,
                 hasAudio = items.any { it.hasAudio },
-                items = items,
+                items = items.map { item ->
+                    if (item.thumbnailUrl != null) item else item.copy(thumbnailUrl = fallbackImage)
+                },
             )
         }
         return null
@@ -164,7 +177,7 @@ object InstagramCrawler {
             ?.let { parseDashManifest(it) }
 
         val isPhoto = progressive == null && dash == null &&
-            findArray(obj, "image_versions2") != null
+            findObject(obj, "image_versions2") != null
 
         // У progressive-файла в JSON нет ни ширины, ни высоты, поэтому
         // разрешение берём у публикации целиком.
@@ -310,17 +323,36 @@ object InstagramCrawler {
     private fun String.intAttr(name: String): Int =
         Regex("$name=\"([0-9]+)\"").find(this)?.groupValues?.get(1)?.toIntOrNull() ?: 0
 
-    /** Обложка публикации: первая картинка из `image_versions2`. */
+    /** Обложка публикации: первая картинка из `image_versions2.candidates`. */
     private fun thumbnailOf(obj: JsonObject): String? {
-        val candidates = findArray(obj, "image_versions2")
-            ?.firstNotNullOfOrNull { element ->
-                val entry = element as? JsonObject ?: return@firstNotNullOfOrNull null
-                entry["candidates"]?.jsonArray?.firstNotNullOfOrNull { candidate ->
-                    (candidate as? JsonObject)?.get("url")
-                        ?.jsonPrimitive?.contentOrNullSafe()
-                }
+        val candidates = findObject(obj, "image_versions2")
+            ?.get("candidates")?.jsonArray
+            ?.firstNotNullOfOrNull { candidate ->
+                (candidate as? JsonObject)?.get("url")
+                    ?.jsonPrimitive?.contentOrNullSafe()
             }
         return candidates?.replace("\\u0026", "&")
+    }
+
+    /** Рекурсивно ищет объект по ключу. */
+    private fun findObject(element: kotlinx.serialization.json.JsonElement, key: String): JsonObject? {
+        when (element) {
+            is JsonObject -> {
+                (element[key] as? JsonObject)?.let { return it }
+                element.values.forEach { value ->
+                    findObject(value, key)?.let { return it }
+                }
+            }
+
+            is kotlinx.serialization.json.JsonArray -> {
+                element.forEach { value ->
+                    findObject(value, key)?.let { return it }
+                }
+            }
+
+            else -> Unit
+        }
+        return null
     }
 }
 
