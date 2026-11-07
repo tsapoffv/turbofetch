@@ -48,6 +48,38 @@ class LinkParserTest {
     }
 
     @Test
+    fun `разбирает ссылку Instagram`() {
+        val parsed = LinkParser.parse("https://www.instagram.com/p/Chunk8-jurw/")
+
+        assertEquals(Source.INSTAGRAM, parsed?.source)
+        assertEquals("Chunk8-jurw", parsed?.id)
+    }
+
+    @Test
+    fun `разбирает ссылку на рилс Instagram`() {
+        val parsed = LinkParser.parse("https://www.instagram.com/reel/Chunk8-jurw/")
+
+        assertEquals(Source.INSTAGRAM, parsed?.source)
+        assertEquals("Chunk8-jurw", parsed?.id)
+    }
+
+    @Test
+    fun `разбирает короткую ссылку Instagram`() {
+        val parsed = LinkParser.parse("https://instagr.am/p/Chunk8-jurw/")
+
+        assertEquals(Source.INSTAGRAM, parsed?.source)
+        assertEquals("Chunk8-jurw", parsed?.id)
+    }
+
+    @Test
+    fun `разбирает ссылку SoundCloud`() {
+        val parsed = LinkParser.parse("https://soundcloud.com/forss/flickermood")
+
+        assertEquals(Source.SOUNDCLOUD, parsed?.source)
+        assertEquals("flickermood", parsed?.id)
+    }
+
+    @Test
     fun `находит ссылку внутри текста`() {
         val parsed = LinkParser.parse("Смотри это https://youtu.be/xyz987 - прикольно")
 
