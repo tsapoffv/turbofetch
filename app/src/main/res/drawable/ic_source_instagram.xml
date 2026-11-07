@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Скруглённый квадрат, круг и точка вырезаны: тинт красит только рамку. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillType="evenOdd"
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M7,2h10a5,5 0 0,1 5,5v10a5,5 0 0,1 -5,5H7a5,5 0 0,1 -5,-5V7a5,5 0 0,1 5,-5zM12,7a5,5 0 1,0 0,10a5,5 0 1,0 0,-10zM17.4,6.6m-1.2,0a1.2,1.2 0 1,0 2.4,0a1.2,1.2 0 1,0 -2.4,0" />
+</vector>

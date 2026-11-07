@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Облако с двумя звуковыми волнами. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M6.2,18.5a3.9,3.9 0 0,1 -0.2,-7.8 5.4,5.4 0 0,1 10.3,-1.6 3.8,3.8 0 0,1 1.2,7.3z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M6,20.5h12v1.6H6z" />
+</vector>

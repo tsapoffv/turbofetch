@@ -56,6 +56,15 @@ object LinkParser {
                 else -> segments.lastOrNull().orEmpty()
             }
 
+            // Instagram: shortcode — последний значимый сегмент пути.
+            // Пути бывают /p/, /reel/, /reels/, /tv/, /share/p/ — форма
+            // разная, а код всегда один и тот же. Резолвер потом строит
+            // канонический URL /p/<code>/ сам.
+            Source.INSTAGRAM -> segments.lastOrNull().orEmpty()
+
+            // SoundCloud: /<юзер>/<слаг трека> — слаг и есть id.
+            Source.SOUNDCLOUD -> segments.lastOrNull().orEmpty()
+
             Source.UNKNOWN -> ""
         }
     }
