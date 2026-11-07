@@ -21,7 +21,7 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix = ".debug"
+            applicationIdSuffix = ".fun"
         }
         release {
             isMinifyEnabled = true
