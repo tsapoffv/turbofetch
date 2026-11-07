@@ -21,7 +21,10 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix = ".debug"
+            // Разный суффикс на разных ветках: main и fun ставятся рядом
+            // и не затирают друг друга. Ветку меняет одна строка —
+            // см. README.
+            applicationIdSuffix = ".main"
         }
         release {
             isMinifyEnabled = true

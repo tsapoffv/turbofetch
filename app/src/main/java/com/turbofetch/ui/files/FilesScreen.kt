@@ -36,6 +36,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.turbofetch.domain.model.DownloadedFile
+import com.turbofetch.ui.theme.AccentButton
+import com.turbofetch.ui.theme.AccentDivider
+import com.turbofetch.ui.theme.deco
+import com.turbofetch.ui.theme.gradientTextStyle
+import com.turbofetch.ui.theme.isBaybekod
 
 /**
  * Скачанные файлы: второй список рядом с очередью.
@@ -63,22 +68,30 @@ fun FilesScreen(
     Column(modifier = modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
             Spacer(Modifier.height(16.dp))
-            Text("Скачанное", style = MaterialTheme.typography.displayMedium)
+            Text(
+                text = "${deco("📁")}Скачанное",
+                style = gradientTextStyle(MaterialTheme.typography.displayMedium),
+                color = if (isBaybekod()) {
+                    androidx.compose.ui.graphics.Color.Unspecified
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+            )
             Spacer(Modifier.height(6.dp))
             Text(
                 text = if (files.isEmpty()) {
-                    "Здесь появятся файлы после загрузки"
+                    "${deco("💾")}Здесь появятся файлы после загрузки"
                 } else {
-                    "${files.size} ${pluralFiles(files.size)}"
+                    "${deco("💾")}${files.size} ${pluralFiles(files.size)}"
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(14.dp))
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            AccentDivider()
         }
 
-        Box(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.weight(1f)) {
             if (files.isEmpty()) {
                 Column(
                     modifier = Modifier.fillMaxSize().padding(32.dp),
@@ -86,8 +99,9 @@ fun FilesScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Text(
-                        "Пока пусто",
+                        "${deco("🫙")}Пока пусто",
                         style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
@@ -112,30 +126,24 @@ fun FilesScreen(
                             },
                             onDelete = { viewModel.delete(file) },
                         )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        AccentDivider()
                     }
                 }
             }
 
-            if (files.isNotEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 16.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(MaterialTheme.colorScheme.primary)
-                        .clickable { viewModel.deleteAll() }
-                        .padding(vertical = 15.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        "Удалить всё",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                    )
-                }
-            }
+        }
+
+        // Кнопка отдельной строкой под списком: накладывать её поверх
+        // списка нельзя — она закрывала последний файл.
+        if (files.isNotEmpty()) {
+            AccentButton(
+                text = "Удалить всё",
+                emoji = "💀",
+                onClick = { viewModel.deleteAll() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+            )
         }
 
         SnackbarHost(snackbarHostState)
@@ -172,6 +180,8 @@ private fun FileRow(
             )
         }
         Spacer(Modifier.width(10.dp))
+        // Иконки фиксированной ширины: при крупном шрифте текст не должен
+        // отжимать их и ломать строку.
         Icon(
             imageVector = Icons.Default.PlayArrow,
             contentDescription = "Открыть",

@@ -10,21 +10,39 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.turbofetch.ui.files.FilesScreen
 import com.turbofetch.ui.files.FilesViewModel
@@ -33,6 +51,9 @@ import com.turbofetch.ui.queue.QueueViewModel
 import com.turbofetch.ui.settings.SettingsScreen
 import com.turbofetch.ui.settings.SettingsViewModel
 import com.turbofetch.ui.theme.TurboFetchTheme
+import com.turbofetch.ui.theme.isBaybekod
+import com.turbofetch.ui.theme.livingAccentBrush
+import com.turbofetch.ui.theme.tabLabelStyle
 
 class MainActivity : ComponentActivity() {
 
@@ -51,10 +72,14 @@ class MainActivity : ComponentActivity() {
         requestNotificationPermissionIfNeeded()
 
         setContent {
-            TurboFetchTheme {
+            val settings by settingsViewModel.settings.collectAsStateWithLifecycle()
+
+            TurboFetchTheme(
+                theme = settings.theme,
+                dark = settings.darkMode,
+            ) {
                 var showSettings by rememberSaveable { mutableStateOf(false) }
                 var tab by rememberSaveable { mutableStateOf(Tab.QUEUE) }
-                val settings by settingsViewModel.settings.collectAsStateWithLifecycle()
 
                 if (showSettings) {
                     // Настройки — экран поверх: назад возвращает на вкладку.
@@ -64,47 +89,21 @@ class MainActivity : ComponentActivity() {
                         onBack = { showSettings = false },
                     )
                 } else {
-                    Scaffold(
-                        bottomBar = {
-                            NavigationBar {
-                                NavigationBarItem(
-                                    selected = tab == Tab.QUEUE,
-                                    onClick = { tab = Tab.QUEUE },
-                                    icon = {
-                                        Icon(Icons.Default.Download, contentDescription = null)
-                                    },
-                                    label = { Text(Tab.QUEUE.title) },
-                                )
-                                NavigationBarItem(
-                                    selected = tab == Tab.FILES,
-                                    onClick = { tab = Tab.FILES },
-                                    icon = {
-                                        Icon(Icons.Default.Folder, contentDescription = null)
-                                    },
-                                    label = { Text(Tab.FILES.title) },
-                                )
-                                NavigationBarItem(
-                                    selected = false,
-                                    onClick = { showSettings = true },
-                                    icon = {
-                                        Icon(Icons.Default.Settings, contentDescription = null)
-                                    },
-                                    label = { Text("Настройки") },
-                                )
-                            }
-                        },
-                    ) { padding ->
+                    AppScaffold(
+                        tab = tab,
+                        onTabSelected = { tab = it },
+                        onOpenSettings = { showSettings = true },
+                    ) { contentPadding ->
                         when (tab) {
                             Tab.QUEUE -> QueueScreen(
                                 viewModel = queueViewModel,
                                 fileNameTemplate = settings.fileNameTemplate,
-                                onOpenSettings = { showSettings = true },
-                                modifier = Modifier.padding(padding),
+                                modifier = Modifier.padding(contentPadding),
                             )
 
                             Tab.FILES -> FilesScreen(
                                 viewModel = filesViewModel,
-                                modifier = Modifier.padding(padding),
+                                modifier = Modifier.padding(contentPadding),
                             )
                         }
                     }
@@ -152,4 +151,141 @@ class MainActivity : ComponentActivity() {
 enum class Tab(val title: String) {
     QUEUE("Очередь"),
     FILES("Скачанное"),
+}
+
+/**
+ * Каркас приложения: содержимое сверху, переключатель вкладок снизу.
+ *
+ * Панель вкладок — не Material-овская, а нарисованная: на бумаге
+ * кнопки не нужны, достаточно двух подчёркнутых слов.
+ */
+@Composable
+private fun AppScaffold(
+    tab: Tab,
+    onTabSelected: (Tab) -> Unit,
+    onOpenSettings: () -> Unit,
+    content: @Composable (PaddingValues) -> Unit,
+) {
+    // История вкладок: «назад» возвращает на предыдущую, а не выходит из
+    // приложения. Пустая история — значит, мы на первой вкладке.
+    // Храним имена вкладок, а не сами вкладки: enum не переживает
+    // сохранение состояния activity, а строка — переживает.
+    val history = rememberSaveable { mutableStateOf(emptyList<String>()) }
+
+    fun goTo(new: Tab) {
+        if (new == tab) return
+        history.value = history.value + tab.name
+        onTabSelected(new)
+    }
+
+    fun goBack() {
+        val previous = history.value.lastOrNull() ?: return
+        history.value = history.value.dropLast(1)
+        val target = Tab.entries.firstOrNull { it.name == previous } ?: return
+        onTabSelected(target)
+    }
+
+    BackHandler(enabled = history.value.isNotEmpty()) { goBack() }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
+        // MaterialTheme по умолчанию даёт LocalContentColor = чёрный.
+        // На тёмной теме это значит чёрный текст на чёрном фоне, поэтому
+        // цвет содержимого задаётся явно.
+        CompositionLocalProvider(
+            LocalContentColor provides MaterialTheme.colorScheme.onBackground,
+        ) {
+            Box(modifier = Modifier.weight(1f)) {
+                content(PaddingValues(top = 48.dp))
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            TabBar(tab = tab, onTabSelected = ::goTo, onOpenSettings = onOpenSettings)
+        }
+    }
+}
+
+@Composable
+private fun TabBar(
+    tab: Tab,
+    onTabSelected: (Tab) -> Unit,
+    onOpenSettings: () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 12.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // Вкладки делят место поровну и поджимаются при крупном шрифте:
+            // иначе длинные названия выдавливают «Настройки» в столбик.
+            Tab.entries.forEach { candidate ->
+                val selected = candidate == tab
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onTabSelected(candidate) }
+                        // Отступ между вкладками: без него подписи
+                        // при крупном шрифте слипаются в «СкачанноеСвятилище».
+                        .padding(horizontal = 5.dp, vertical = 6.dp),
+                ) {
+                    Text(
+                        text = candidate.title,
+                        style = tabLabelStyle(),
+                        color = if (selected) {
+                            if (isBaybekod()) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            }
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Box(
+                        modifier = Modifier
+                            .width(if (selected) 24.dp else 0.dp)
+                            .height(if (isBaybekod()) 3.dp else 1.5.dp)
+                            .background(
+                                if (selected) {
+                                    if (isBaybekod()) {
+                                        livingAccentBrush()
+                                    } else {
+                                        Brush.linearGradient(
+                                            listOf(
+                                                MaterialTheme.colorScheme.onSurface,
+                                                MaterialTheme.colorScheme.onSurface,
+                                            ),
+                                        )
+                                    }
+                                } else {
+                                    Brush.linearGradient(
+                                        listOf(Color.Transparent, Color.Transparent),
+                                    )
+                                },
+                            ),
+                    )
+                }
+            }
+            // Настройки — иконка: подпись при крупном шрифте не помещалась.
+            IconButton(
+                onClick = onOpenSettings,
+                modifier = Modifier.size(40.dp),
+            ) {
+                Icon(
+                    Icons.Default.Settings,
+                    contentDescription = "Настройки",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
+    }
 }

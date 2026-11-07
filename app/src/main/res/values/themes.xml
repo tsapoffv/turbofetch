@@ -1,5 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Бумажный фон окна: тема всегда светлая, поэтому и ночной вариант
+         должен быть таким же, иначе Compose-экраны окажутся на чёрном. -->
     <style name="Theme.TurboFetch" parent="@android:style/Theme.Material.Light.NoActionBar">
-        <item name="android:windowBackground">@android:color/white</item>
+        <item name="android:windowBackground">@color/paper_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
 </resources>

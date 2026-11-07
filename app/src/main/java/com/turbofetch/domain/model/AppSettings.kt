@@ -29,6 +29,10 @@ data class AppSettings(
     val fileNameTemplate: String = DEFAULT_TEMPLATE,
     val openAfterDownload: Boolean = true,
     val downloadOverWifiOnly: Boolean = false,
+    /** Тема оформления. */
+    val theme: AppTheme = AppTheme.WARM_PAPER,
+    /** Тёмная тема. Игнорируется темой без тёмного варианта. */
+    val darkMode: Boolean = false,
 ) {
     companion object {
         const val DEFAULT_TEMPLATE = "{title}_{quality}.{ext}"

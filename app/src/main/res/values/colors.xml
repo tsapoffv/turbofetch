@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#FF1B1B1F</color>
+    <!-- Фон окна до отрисовки Compose: бумага. -->
+    <color name="paper_background">#FAF9F6</color>
 </resources>

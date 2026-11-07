@@ -8,6 +8,15 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!--
+      На Android 8–9 запись в публичные папки идёт напрямую через файловое API
+      (MediaStore там ещё не умеет RELATIVE_PATH), поэтому нужно разрешение.
+      С Android 10 MediaStore работает без разрешений на хранилище, так что
+      дальше 28 оно не нужно.
+    -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
 
     <application
         android:name=".TurboFetchApp"
@@ -22,7 +31,9 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
-            android:theme="@style/Theme.TurboFetch">
+            android:theme="@style/Theme.TurboFetch"
+            android:screenOrientation="portrait"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize|uiMode|density|fontScale">
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
