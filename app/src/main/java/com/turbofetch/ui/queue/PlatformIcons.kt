@@ -17,5 +17,6 @@ fun Source.iconRes(): Int = when (this) {
     Source.X -> R.drawable.ic_source_x
     Source.INSTAGRAM -> R.drawable.ic_source_instagram
     Source.SOUNDCLOUD -> R.drawable.ic_source_soundcloud
+    Source.SPOTIFY -> R.drawable.ic_source_spotify
     Source.UNKNOWN -> R.drawable.ic_source_link
 }

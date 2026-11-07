@@ -499,5 +499,6 @@ private fun Source.label(): String = when (this) {
     Source.X -> "X"
     Source.INSTAGRAM -> "Instagram"
     Source.SOUNDCLOUD -> "SoundCloud"
+    Source.SPOTIFY -> "Spotify"
     Source.UNKNOWN -> "Ссылка"
 }

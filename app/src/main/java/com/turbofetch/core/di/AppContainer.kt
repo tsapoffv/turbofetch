@@ -11,6 +11,7 @@ import com.turbofetch.data.repo.TaskRepository
 import com.turbofetch.data.resolver.TikTokResolver
 import com.turbofetch.data.resolver.instagram.InstagramResolver
 import com.turbofetch.data.resolver.soundcloud.SoundCloudResolver
+import com.turbofetch.data.resolver.spotify.SpotifyResolver
 import com.turbofetch.data.resolver.XResolver
 import com.turbofetch.data.resolver.youtube.YouTubeResolver
 import com.turbofetch.data.storage.MediaStoreWriter
@@ -60,6 +61,7 @@ class AppContainer(context: Context) {
             Source.YOUTUBE to YouTubeResolver(httpClient),
             Source.INSTAGRAM to InstagramResolver(httpClient),
             Source.SOUNDCLOUD to SoundCloudResolver(httpClient),
+            Source.SPOTIFY to SpotifyResolver(httpClient),
         )
     }
 
