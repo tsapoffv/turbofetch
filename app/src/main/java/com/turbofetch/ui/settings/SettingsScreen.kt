@@ -34,8 +34,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.turbofetch.domain.model.AppTheme
 import com.turbofetch.domain.model.FileNameTemplate
 import com.turbofetch.domain.model.QualityPreset
+import com.turbofetch.ui.theme.deco
+import com.turbofetch.ui.theme.isBaybekod
+import com.turbofetch.ui.theme.livingAccentBrush
+import com.turbofetch.ui.theme.neonGlow
 
 /**
  * Настройки — в том же «бумажном» стиле: чипы без заливки,
@@ -50,6 +55,10 @@ fun SettingsScreen(
     val settings by viewModel.settings.collectAsStateWithLifecycle()
 
     Scaffold(
+        // MaterialTheme по умолчанию даёт чёрный LocalContentColor —
+        // на тёмной теме текст был бы невидим.
+        containerColor = MaterialTheme.colorScheme.background,
+        contentColor = MaterialTheme.colorScheme.onBackground,
         topBar = {
             TopAppBar(
                 title = { Text("Настройки", style = MaterialTheme.typography.headlineSmall) },
@@ -73,9 +82,27 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp),
         ) {
+            SectionTitle("Тема")
+            Spacer(Modifier.height(10.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                AppTheme.entries.forEach { theme ->
+                    ThemeRow(
+                        theme = theme,
+                        selected = settings.theme == theme,
+                        dark = settings.darkMode,
+                        onSelect = { viewModel.update { it.copy(theme = theme) } },
+                        onToggleDark = { viewModel.update { it.copy(darkMode = !it.darkMode) } },
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(28.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Spacer(Modifier.height(24.dp))
+
             SectionTitle("Качество по умолчанию")
             Text(
-                "Применяется к новым задачам в очереди",
+                "${deco("🎚️")}Применяется к новым задачам в очереди",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -83,6 +110,7 @@ fun SettingsScreen(
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 QualityPreset.entries.forEach { preset ->
                     val selected = settings.defaultQuality == preset
+                    val shape = RoundedCornerShape(if (isBaybekod()) 20.dp else 2.dp)
                     Text(
                         text = preset.label,
                         style = MaterialTheme.typography.labelLarge,
@@ -92,12 +120,15 @@ fun SettingsScreen(
                             MaterialTheme.colorScheme.onSurface
                         },
                         modifier = Modifier
-                            .clip(RoundedCornerShape(2.dp))
+                            .then(if (selected) neonGlow(shape) else Modifier)
+                            .clip(shape)
                             .background(
                                 if (selected) {
-                                    MaterialTheme.colorScheme.primary
+                                    livingAccentBrush()
                                 } else {
-                                    MaterialTheme.colorScheme.surfaceVariant
+                                    androidx.compose.ui.graphics.SolidColor(
+                                        MaterialTheme.colorScheme.surfaceVariant,
+                                    )
                                 },
                             )
                             .clickable { viewModel.update { it.copy(defaultQuality = preset) } }
@@ -175,6 +206,87 @@ fun SettingsScreen(
 @Composable
 private fun SectionTitle(text: String) {
     Text(text, style = MaterialTheme.typography.titleLarge)
+}
+
+/**
+ * Строка выбора темы: название, пояснение и переключатель тёмного
+ * варианта. У ТУРБОВАЙБКОДА тёмного варианта нет — там переключатель
+ * не показывается.
+ */
+@Composable
+private fun ThemeRow(
+    theme: AppTheme,
+    selected: Boolean,
+    dark: Boolean,
+    onSelect: () -> Unit,
+    onToggleDark: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (selected) {
+                    neonGlow(RoundedCornerShape(if (isBaybekod()) 14.dp else 2.dp))
+                } else {
+                    Modifier
+                },
+            )
+            .clip(RoundedCornerShape(if (isBaybekod()) 14.dp else 2.dp))
+            .background(
+                if (selected) {
+                    if (isBaybekod()) {
+                        livingAccentBrush()
+                    } else {
+                        androidx.compose.ui.graphics.SolidColor(
+                            MaterialTheme.colorScheme.surfaceVariant,
+                        )
+                    }
+                } else {
+                    androidx.compose.ui.graphics.SolidColor(
+                        MaterialTheme.colorScheme.background,
+                    )
+                },
+            )
+            .clickable(onClick = onSelect)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = theme.title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (selected) {
+                    if (isBaybekod()) {
+                        MaterialTheme.colorScheme.onPrimary
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    }
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = theme.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (selected && isBaybekod()) {
+                    MaterialTheme.colorScheme.onPrimary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        if (theme.hasDarkVariant) {
+            Text(
+                text = if (dark) "🌙 Тёмная" else "☀️ Светлая",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.width(8.dp))
+            Switch(checked = dark, onCheckedChange = { onToggleDark() })
+        }
+    }
 }
 
 @Composable

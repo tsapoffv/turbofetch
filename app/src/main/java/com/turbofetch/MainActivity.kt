@@ -21,17 +21,26 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -44,6 +53,9 @@ import com.turbofetch.ui.settings.SettingsViewModel
 import com.turbofetch.ui.shrine.ShrineScreen
 import com.turbofetch.ui.shrine.ShrineViewModel
 import com.turbofetch.ui.theme.TurboFetchTheme
+import com.turbofetch.ui.theme.isBaybekod
+import com.turbofetch.ui.theme.livingAccentBrush
+import com.turbofetch.ui.theme.tabLabelStyle
 
 class MainActivity : ComponentActivity() {
 
@@ -63,10 +75,14 @@ class MainActivity : ComponentActivity() {
         requestNotificationPermissionIfNeeded()
 
         setContent {
-            TurboFetchTheme {
+            val settings by settingsViewModel.settings.collectAsStateWithLifecycle()
+
+            TurboFetchTheme(
+                theme = settings.theme,
+                dark = settings.darkMode,
+            ) {
                 var showSettings by rememberSaveable { mutableStateOf(false) }
                 var tab by rememberSaveable { mutableStateOf(Tab.QUEUE) }
-                val settings by settingsViewModel.settings.collectAsStateWithLifecycle()
 
                 if (showSettings) {
                     // Настройки — экран поверх: назад возвращает на вкладку.
@@ -185,11 +201,18 @@ private fun AppScaffold(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
-        Box(modifier = Modifier.weight(1f)) {
-            content(PaddingValues(top = 48.dp))
+        // MaterialTheme по умолчанию даёт LocalContentColor = чёрный.
+        // На тёмной теме это значит чёрный текст на чёрном фоне, поэтому
+        // цвет содержимого задаётся явно.
+        CompositionLocalProvider(
+            LocalContentColor provides MaterialTheme.colorScheme.onBackground,
+        ) {
+            Box(modifier = Modifier.weight(1f)) {
+                content(PaddingValues(top = 48.dp))
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            TabBar(tab = tab, onTabSelected = ::goTo, onOpenSettings = onOpenSettings)
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        TabBar(tab = tab, onTabSelected = ::goTo, onOpenSettings = onOpenSettings)
     }
 }
 
@@ -204,48 +227,74 @@ private fun TabBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 10.dp),
+                .padding(start = 12.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // Вкладки делят место поровну и поджимаются при крупном шрифте:
+            // иначе длинные названия выдавливают «Настройки» в столбик.
             Tab.entries.forEach { candidate ->
                 val selected = candidate == tab
                 Column(
                     modifier = Modifier
+                        .weight(1f)
                         .clickable { onTabSelected(candidate) }
-                        .padding(horizontal = 4.dp, vertical = 6.dp),
+                        // Отступ между вкладками: без него подписи
+                        // при крупном шрифте слипаются в «СкачанноеСвятилище».
+                        .padding(horizontal = 5.dp, vertical = 6.dp),
                 ) {
                     Text(
                         text = candidate.title,
-                        style = MaterialTheme.typography.labelLarge,
+                        style = tabLabelStyle(),
                         color = if (selected) {
-                            MaterialTheme.colorScheme.onSurface
+                            if (isBaybekod()) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            }
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant
                         },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     Spacer(Modifier.height(3.dp))
                     Box(
                         modifier = Modifier
                             .width(if (selected) 24.dp else 0.dp)
-                            .height(1.5.dp)
+                            .height(if (isBaybekod()) 3.dp else 1.5.dp)
                             .background(
                                 if (selected) {
-                                    MaterialTheme.colorScheme.onSurface
+                                    if (isBaybekod()) {
+                                        livingAccentBrush()
+                                    } else {
+                                        Brush.linearGradient(
+                                            listOf(
+                                                MaterialTheme.colorScheme.onSurface,
+                                                MaterialTheme.colorScheme.onSurface,
+                                            ),
+                                        )
+                                    }
                                 } else {
-                                    Color.Transparent
+                                    Brush.linearGradient(
+                                        listOf(Color.Transparent, Color.Transparent),
+                                    )
                                 },
                             ),
                     )
                 }
-                Spacer(Modifier.width(18.dp))
             }
-            Spacer(Modifier.weight(1f))
-            Text(
-                text = "Настройки",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.clickable { onOpenSettings() },
-            )
+            // Настройки — иконка: подпись при крупном шрифте не помещалась.
+            IconButton(
+                onClick = onOpenSettings,
+                modifier = Modifier.size(40.dp),
+            ) {
+                Icon(
+                    Icons.Default.Settings,
+                    contentDescription = "Настройки",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
         }
     }
 }

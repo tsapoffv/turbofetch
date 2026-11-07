@@ -32,9 +32,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.turbofetch.R
+import com.turbofetch.ui.theme.AccentButton
+import com.turbofetch.ui.theme.AccentDivider
+import com.turbofetch.ui.theme.deco
+import com.turbofetch.ui.theme.gradientTextStyle
+import com.turbofetch.ui.theme.isBaybekod
+import com.turbofetch.ui.theme.livingAccentBrush
+import com.turbofetch.ui.theme.neonGlow
 
 /**
  * «Святилище Питера Тиля».
@@ -49,8 +57,9 @@ fun ShrineScreen(
     viewModel: ShrineViewModel,
     modifier: Modifier = Modifier,
 ) {
-    // При первом показе подставляем несколько цитат, чтобы экран не пустовал.
-    LaunchedEffect(Unit) { viewModel.prime(3) }
+    // Цитата дня готовится один раз за сеанс: список откровений пустой
+    // до нажатия «Открыть ворота».
+    LaunchedEffect(Unit) { viewModel.prepareQuoteOfTheDay() }
 
     val topic = viewModel.topic
     val quotes = viewModel.revelationsFor(topic)
@@ -71,29 +80,35 @@ fun ShrineScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
-                .clip(RoundedCornerShape(2.dp))
+                .then(neonGlow(RoundedCornerShape(if (isBaybekod()) 16.dp else 2.dp)))
+                .clip(RoundedCornerShape(if (isBaybekod()) 16.dp else 2.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant),
         )
 
         Spacer(Modifier.height(14.dp))
 
         Text(
-            text = "Питер Тиль",
-            style = MaterialTheme.typography.displayMedium,
+            text = "${deco("🕶️")}Питер Тиль",
+            style = gradientTextStyle(MaterialTheme.typography.displayMedium),
+            color = if (isBaybekod()) {
+                androidx.compose.ui.graphics.Color.Unspecified
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            text = "Святилище №1 · откровения генерируются цепью Маркова",
+            text = "${deco("⛪")}Святилище №1 · откровения генерируются цепью Маркова",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
         Spacer(Modifier.height(24.dp))
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        AccentDivider()
         Spacer(Modifier.height(20.dp))
 
         Text(
-            text = "Темы",
+            text = "${deco("🗂️")}Темы",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -105,6 +120,7 @@ fun ShrineScreen(
         ) {
             ShrineTopic.entries.forEach { candidate ->
                 val selected = candidate == topic
+                val shape = RoundedCornerShape(if (isBaybekod()) 20.dp else 2.dp)
                 Text(
                     text = candidate.title,
                     style = MaterialTheme.typography.labelLarge,
@@ -114,12 +130,15 @@ fun ShrineScreen(
                         MaterialTheme.colorScheme.onSurface
                     },
                     modifier = Modifier
-                        .clip(RoundedCornerShape(2.dp))
+                        .then(if (selected) neonGlow(shape) else Modifier)
+                        .clip(shape)
                         .background(
                             if (selected) {
-                                MaterialTheme.colorScheme.primary
+                                livingAccentBrush()
                             } else {
-                                MaterialTheme.colorScheme.surface
+                                androidx.compose.ui.graphics.SolidColor(
+                                    MaterialTheme.colorScheme.surface,
+                                )
                             },
                         )
                         .clickable { viewModel.selectTopic(candidate) }
@@ -136,17 +155,45 @@ fun ShrineScreen(
         )
 
         Spacer(Modifier.height(24.dp))
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        AccentDivider()
         Spacer(Modifier.height(20.dp))
 
+        // --- Цитата дня ---
         Text(
-            text = "Откровения",
+            text = "${deco("🔥")}Цитата дня",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(12.dp))
+
+        viewModel.quoteOfTheDay?.let { revelation ->
+            QuoteBlock(revelation, prominent = true)
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // Кнопка под цитатой дня — как и просили: сначала дельца дня,
+        // потом кнопка, а уже под ней список откровений.
+        AccentButton(
+            text = "Открыть ворота",
+            emoji = "🌀",
+            onClick = { viewModel.reveal() },
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        Spacer(Modifier.height(28.dp))
+        AccentDivider()
+        Spacer(Modifier.height(20.dp))
+
+        // --- Список откровений ---
+        Text(
+            text = "${deco("👁️")}Откровения",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            text = "${quotes.size} всего · выдано ${viewModel.revealed}",
+            text = "${quotes.size} из ${MAX_QUOTES} · выдано ${viewModel.revealed}",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -155,7 +202,7 @@ fun ShrineScreen(
 
         if (quotes.isEmpty()) {
             Text(
-                text = "Пока тишина. Нажмите «Открыть ворота».",
+                text = "${deco("🤫")}Пока тишина. Нажмите «Открыть ворота».",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -166,27 +213,8 @@ fun ShrineScreen(
             }
         }
 
-        Spacer(Modifier.height(8.dp))
-
-        // Кнопка в стиле бумаги: чёрная плашка, прямые углы.
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(2.dp))
-                .background(MaterialTheme.colorScheme.primary)
-                .clickable { viewModel.reveal() }
-                .padding(vertical = 15.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = "Открыть ворота",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onPrimary,
-            )
-        }
-
         Spacer(Modifier.height(24.dp))
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        AccentDivider()
         Spacer(Modifier.height(14.dp))
 
         Text(
@@ -207,19 +235,31 @@ fun ShrineScreen(
  * собрана. Тонкая линия слева — как сноска на полях.
  */
 @Composable
-private fun QuoteBlock(revelation: Revelation) {
+private fun QuoteBlock(revelation: Revelation, prominent: Boolean = false) {
     Row(modifier = Modifier.fillMaxWidth()) {
         Box(
             modifier = Modifier
-                .width(2.dp)
-                .height(64.dp)
-                .background(MaterialTheme.colorScheme.outline),
+                .width(if (prominent) 3.dp else 2.dp)
+                .height(if (prominent) 84.dp else 64.dp)
+                .background(
+                    if (prominent) {
+                        livingAccentBrush()
+                    } else {
+                        androidx.compose.ui.graphics.SolidColor(
+                            MaterialTheme.colorScheme.outline,
+                        )
+                    },
+                ),
         )
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "«${revelation.text}»",
-                style = MaterialTheme.typography.bodyLarge,
+                style = if (prominent) {
+                    MaterialTheme.typography.headlineSmall
+                } else {
+                    MaterialTheme.typography.bodyLarge
+                },
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Spacer(Modifier.height(6.dp))
@@ -231,3 +271,6 @@ private fun QuoteBlock(revelation: Revelation) {
         }
     }
 }
+
+/** Сколько откровений помещается в список. */
+private const val MAX_QUOTES = 5

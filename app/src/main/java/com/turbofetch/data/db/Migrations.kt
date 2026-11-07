@@ -35,6 +35,18 @@ object Migrations {
         }
     }
 
+    /** 3 → 4: в настройках появились тема оформления и тёмный режим. */
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "ALTER TABLE `settings` ADD COLUMN `theme` TEXT NOT NULL DEFAULT 'WARM_PAPER'",
+            )
+            db.execSQL(
+                "ALTER TABLE `settings` ADD COLUMN `darkMode` INTEGER NOT NULL DEFAULT 0",
+            )
+        }
+    }
+
     /** Все миграции по порядку. */
-    val ALL: Array<Migration> = arrayOf(MIGRATION_2_3)
+    val ALL: Array<Migration> = arrayOf(MIGRATION_2_3, MIGRATION_3_4)
 }

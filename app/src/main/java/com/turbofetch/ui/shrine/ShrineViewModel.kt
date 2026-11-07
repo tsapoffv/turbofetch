@@ -59,50 +59,38 @@ data class Revelation(
 )
 
 /**
- * Состояние святилища: накопленные откровения по темам.
+ * Состояние святилища.
  *
- * Цитаты генерируются цепью Маркова из настоящих реплик Тиля —
- * получается правдоподобная, но бессмысленная вязь. Ровно для того,
- * чтобы почитать.
+ * **Цитата дня** — одна, наверху, меняется раз в сутки (зерно — номер дня
+ * в году). Под ней — «Открыть ворота», добавляющая цитаты в список.
  *
- * **Набор дня** (то, что показывается при открытии) детерминирован:
- * зерно берётся от номера дня в году, поэтому утром святылище выглядит
- * одинаково, а на следующий день — иначе. Дополнительные «откровения»,
- * которые пользователь вызывает кнопкой, каждый раз новые.
+ * **Список ограничен пятью цитатами.** Старые уходят, новые встают в конец.
+ * При каждом запуске приложения святылище начинается заново: список пустой,
+ * показана только цитата дня. Хранить откровения между запусками смысла
+ * нет — это генератор шуток, а не архив.
  */
 class ShrineViewModel : ViewModel() {
 
     var topic by mutableStateOf(ShrineTopic.ALL)
         private set
 
-    /** Откровения по темам: тема → список. */
+    /** Цитата дня: одна, над списком. */
+    var quoteOfTheDay by mutableStateOf<Revelation?>(null)
+        private set
+
+    /** Откровения по темам: тема → список (не длиннее [MAX_QUOTES]). */
     private val revelations = mutableMapOf<ShrineTopic, MutableList<Revelation>>()
 
-    /** Счётчик — сколько всего откровений выдано. */
+    /** Счётчик — сколько всего откровений выдано за сеанс. */
     var revealed by mutableStateOf(0)
         private set
 
-    /** Цепи для свежих откровений — своя на каждое нажатие. */
-    private val chains = mutableMapOf<ShrineTopic, MarkovChain>()
-
     /**
-     * Дневные цепи: одна на тему на весь день.
-     *
-     * Если создавать цепь заново при каждом откровении, зерно окажется
-     * тем же — и все цитаты дня совпадут. Поэтому цепь живёт до смены
-     * суток, а зерно в ней — номер дня.
-     */
-    private val dailyChains = mutableMapOf<ShrineTopic, MarkovChain>()
-
-    /**
-     * Переключает тему. Если по новой теме ещё нет цитат — наполняем её
-     * сразу, иначе экран останется пустым и непонятно, что он сломан.
+     * Переключает тему. Список для новой темы пуст — наполнять его сразу
+     * незачем: цитата дня уже показана, остальное user запрашивает сам.
      */
     fun selectTopic(newTopic: ShrineTopic) {
         topic = newTopic
-        if (revelationsFor(newTopic).isEmpty()) {
-            repeat(DAILY_QUOTE_COUNT) { revealDaily() }
-        }
     }
 
     /** Откровения по текущей теме (список для отрисовки). */
@@ -113,68 +101,45 @@ class ShrineViewModel : ViewModel() {
      * Добавляет ещё одно откровение — кнопка «Открыть ворота».
      *
      * Каждое нажатие даёт новую вязь: случайность здесь несидирована.
+     * Список не растёт бесконечно: при переполнении самая старая цитата
+     * уходит, иначе экран превращается в простыню.
      */
     fun reveal() {
         val current = topic
         // Для «Всего» тема выбирается случайно — так в ленте встречаются
-        // цитаты со всех сторон Тиля, а не только изbusiness-корпуса.
+        // цитаты со всех сторон Тиля.
         val source = if (current == ShrineTopic.ALL) {
             ShrineTopic.OWN_CORPUS.random(random)
         } else {
             current
         }
 
-        val chain = chainFor(source, seed = System.nanoTime())
+        val chain = MarkovChain(source.corpus(), order = 2, random = Random(System.nanoTime()))
         val quote = chain.generate()
         if (quote.isBlank()) return
 
-        revelations.getOrPut(current) { mutableListOf() }.add(Revelation(quote, source))
-        revealed++
-    }
-
-    /** Заполняет тему дневным набором, чтобы экран не пустовал. */
-    fun prime(count: Int = DAILY_QUOTE_COUNT) {
-        repeat(count) { revealDaily() }
-    }
-
-    /**
-     * Откровение из дневного набора.
-     *
-     * Зерно — номер дня в году, поэтому в течение дня набор один и тот же,
-     * а на следующий день меняется.
-     */
-    private fun revealDaily() {
-        val current = topic
-        val source = if (current == ShrineTopic.ALL) {
-            ShrineTopic.OWN_CORPUS[dayOfYear % ShrineTopic.OWN_CORPUS.size]
-        } else {
-            current
-        }
-
-        val chain = dailyChains.getOrPut(source) {
-            MarkovChain(source.corpus(), order = 2, random = Random(dayOfYear.toLong()))
-        }
-        val quote = chain.generate()
-        if (quote.isBlank()) return
-
-        // Один и тот же текст подряд не показываем: если цепь выдала
-        // повтор — берём следующий.
         val bucket = revelations.getOrPut(current) { mutableListOf() }
-        var attempt = 0
-        while (quote in bucket.map { it.text } && attempt < 10) {
-            attempt++
-        }
-
         bucket.add(Revelation(quote, source))
+        while (bucket.size > MAX_QUOTES) {
+            bucket.removeAt(0)
+        }
         revealed++
     }
 
     /**
-     * Цепь для темы. Дневные цитаты используют общее зерно дня, а свежие —
-     * своё, иначе повторялись бы.
+     * Готовит цитату дня. Зерно — номер дня в году, поэтому в течение дня
+     * цитата одна и та же, а на следующий день меняется.
      */
-    private fun chainFor(topic: ShrineTopic, seed: Long): MarkovChain =
-        MarkovChain(topic.corpus(), order = 2, random = Random(seed))
+    fun prepareQuoteOfTheDay() {
+        if (quoteOfTheDay != null) return
+
+        val source = ShrineTopic.OWN_CORPUS[dayOfYear % ShrineTopic.OWN_CORPUS.size]
+        val chain = MarkovChain(source.corpus(), order = 2, random = Random(dayOfYear.toLong()))
+        val quote = chain.generate()
+        if (quote.isBlank()) return
+
+        quoteOfTheDay = Revelation(quote, source)
+    }
 
     /** Номер дня в году: меняется раз в сутки. */
     private val dayOfYear: Int
@@ -184,7 +149,7 @@ class ShrineViewModel : ViewModel() {
     private val random = Random(System.nanoTime())
 
     private companion object {
-        /** Сколько цитат показывать в пустой теме. */
-        const val DAILY_QUOTE_COUNT = 3
+        /** Сколько цитат максимум в списке. */
+        const val MAX_QUOTES = 5
     }
 }

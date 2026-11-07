@@ -52,6 +52,14 @@ import coil3.compose.AsyncImage
 import com.turbofetch.domain.model.DownloadTask
 import com.turbofetch.domain.model.Source
 import com.turbofetch.domain.model.TaskStatus
+import com.turbofetch.ui.theme.AccentButton
+import com.turbofetch.ui.theme.AccentDivider
+import com.turbofetch.ui.theme.AccentProgress
+import com.turbofetch.ui.theme.deco
+import com.turbofetch.ui.theme.gradientTextStyle
+import com.turbofetch.ui.theme.isBaybekod
+import com.turbofetch.ui.theme.livingAccentBrush
+import com.turbofetch.ui.theme.neonGlow
 
 /**
  * Очередь загрузок — «Warm Paper»: без карточек и теней, строки
@@ -95,7 +103,9 @@ fun QueueScreen(
                         start = 20.dp,
                         end = 20.dp,
                         top = 8.dp,
-                        bottom = 96.dp,
+                        // Запас под кнопку «Скачать всё»: без него
+                        // она накрывает последнюю задачу в списке.
+                        bottom = 112.dp,
                     ),
                 ) {
                     itemsIndexed(tasks, key = { _, task -> task.id }) { index, task ->
@@ -123,17 +133,19 @@ fun QueueScreen(
                             onRetry = { viewModel.retry(task.id) },
                             onOpen = { viewModel.openOutput(task) },
                         )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        AccentDivider()
                     }
                 }
             }
 
             if (tasks.any { it.status == TaskStatus.READY || it.status == TaskStatus.PENDING }) {
-                PaperButton(
+                AccentButton(
                     text = "Скачать всё",
+                    emoji = "⬇️",
                     onClick = { viewModel.downloadAll() },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
                         .padding(horizontal = 20.dp, vertical = 16.dp),
                 )
             }
@@ -168,8 +180,13 @@ private fun Wordmark(
         Spacer(Modifier.height(16.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "TurboFetch",
-                style = MaterialTheme.typography.displayMedium,
+                text = "${deco("⚡")}TurboFetch",
+                style = gradientTextStyle(MaterialTheme.typography.displayMedium),
+                color = if (isBaybekod()) {
+                    androidx.compose.ui.graphics.Color.Unspecified
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
                 modifier = Modifier.weight(1f),
             )
             if (taskCount > 0) {
@@ -186,15 +203,15 @@ private fun Wordmark(
         Spacer(Modifier.height(6.dp))
         Text(
             text = if (taskCount > 0) {
-                "Загрузка напрямую с CDN · в очереди $taskCount"
+                "${deco("📦")}Загрузка напрямую с CDN · в очереди $taskCount"
             } else {
-                "Загрузка напрямую с CDN"
+                "${deco("📦")}Загрузка напрямую с CDN"
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(14.dp))
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        AccentDivider()
     }
 }
 
@@ -205,20 +222,7 @@ fun PaperButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(2.dp))
-            .background(MaterialTheme.colorScheme.primary)
-            .clickable(onClick = onClick)
-            .padding(vertical = 15.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onPrimary,
-        )
-    }
+    AccentButton(text = text, onClick = onClick, modifier = modifier, living = false)
 }
 
 /** Поле для ввода ссылки вручную — «Поделиться» не единственный способ. */
@@ -235,13 +239,13 @@ private fun LinkInput(onSubmit: (String) -> Unit) {
         Box(
             modifier = Modifier
                 .weight(1f)
-                .clip(RoundedCornerShape(2.dp))
+                .clip(RoundedCornerShape(if (isBaybekod()) 12.dp else 2.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .padding(horizontal = 14.dp, vertical = 13.dp),
         ) {
             if (text.isEmpty()) {
                 Text(
-                    text = "Вставьте ссылку на видео",
+                    text = "${deco("🔗")}Вставьте ссылку на видео",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -260,15 +264,19 @@ private fun LinkInput(onSubmit: (String) -> Unit) {
             )
         }
         Spacer(Modifier.width(10.dp))
+        val sendShape = RoundedCornerShape(if (isBaybekod()) 12.dp else 2.dp)
         Box(
             modifier = Modifier
                 .size(46.dp)
-                .clip(RoundedCornerShape(2.dp))
+                .then(neonGlow(sendShape))
+                .clip(sendShape)
                 .background(
                     if (text.isNotBlank()) {
-                        MaterialTheme.colorScheme.primary
+                        livingAccentBrush()
                     } else {
-                        MaterialTheme.colorScheme.surfaceVariant
+                        androidx.compose.ui.graphics.SolidColor(
+                            MaterialTheme.colorScheme.surfaceVariant,
+                        )
                     },
                 )
                 .clickable {
@@ -305,12 +313,17 @@ private fun EmptyQueue() {
             Icons.Default.Download,
             contentDescription = null,
             modifier = Modifier.size(44.dp),
-            tint = MaterialTheme.colorScheme.outline,
+            tint = if (isBaybekod()) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.outline
+            },
         )
         Spacer(Modifier.height(18.dp))
         Text(
-            "Очередь пуста",
+            "${deco("🕸️")}Очередь пуста",
             style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.onSurface,
         )
         Spacer(Modifier.height(8.dp))
         Text(
@@ -399,9 +412,9 @@ private fun TaskRow(
         when (task.status) {
             TaskStatus.RUNNING, TaskStatus.PROBING -> {
                 Spacer(Modifier.height(12.dp))
-                LinearProgressIndicator(
-                    progress = { task.progress },
-                    modifier = Modifier.fillMaxWidth().height(2.dp),
+                AccentProgress(
+                    progress = task.progress,
+                    modifier = Modifier.fillMaxWidth().height(4.dp),
                 )
                 Spacer(Modifier.height(10.dp))
                 Row(
