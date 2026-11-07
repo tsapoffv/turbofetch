@@ -5,6 +5,7 @@ import androidx.work.WorkManager
 import com.turbofetch.data.db.TurboFetchDatabase
 import com.turbofetch.data.media.FfmpegRunner
 import com.turbofetch.data.remote.HttpClientFactory
+import com.turbofetch.data.repo.FileRepository
 import com.turbofetch.data.repo.SettingsRepository
 import com.turbofetch.data.repo.TaskRepository
 import com.turbofetch.data.resolver.TikTokResolver
@@ -30,6 +31,9 @@ class AppContainer(context: Context) {
     val taskRepository: TaskRepository by lazy { TaskRepository(database.taskDao()) }
 
     val settingsRepository: SettingsRepository by lazy { SettingsRepository(database.settingsDao()) }
+
+    /** История уже скачанных файлов. */
+    val fileRepository: FileRepository by lazy { FileRepository(database.fileDao()) }
 
     val mediaStoreWriter: MediaStoreWriter by lazy { MediaStoreWriter(appContext) }
 

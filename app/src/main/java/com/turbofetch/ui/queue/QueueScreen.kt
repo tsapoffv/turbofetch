@@ -66,6 +66,7 @@ fun QueueScreen(
     viewModel: QueueViewModel,
     fileNameTemplate: String,
     onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val tasks by viewModel.tasks.collectAsStateWithLifecycle()
     val message by viewModel.messages.collectAsStateWithLifecycle()
@@ -82,10 +83,18 @@ fun QueueScreen(
     }
 
     Scaffold(
+        modifier = modifier,
         topBar = {
             TopAppBar(
                 title = { Text("TurboFetch") },
                 actions = {
+                    // Очистить очередь разом — кнопка появляется, только
+                    // когда есть что очищать.
+                    if (tasks.isNotEmpty()) {
+                        TextButton(onClick = { viewModel.clearQueue() }) {
+                            Text("Очистить всё")
+                        }
+                    }
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Default.Settings, contentDescription = "Настройки")
                     }
