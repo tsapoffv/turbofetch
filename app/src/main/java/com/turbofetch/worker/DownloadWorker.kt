@@ -173,7 +173,9 @@ class DownloadWorker(
         // аудиопотока с подписью нет.
         val qualityToken = when {
             MediaNaming.isAudioOnlySource(current.availableFormats) ->
-                qualityLabel(primaryFormat)
+                // У YouTube подпись аудиопотока начинается со слова «аудио» —
+                // в имени оно лишнее: «Трек_130 кбит_с.m4a» читается лучше.
+                qualityLabel(primaryFormat).removePrefix("аудио ")
             wantsAudioOnly -> "audio"
             else -> qualityLabel(videoFormat)
         }

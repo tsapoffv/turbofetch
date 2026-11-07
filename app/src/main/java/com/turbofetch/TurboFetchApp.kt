@@ -7,6 +7,9 @@ import android.app.NotificationManager
 import android.os.Build
 import android.os.Bundle
 import com.turbofetch.core.di.AppContainer
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 class TurboFetchApp : Application() {
 
@@ -22,6 +25,15 @@ class TurboFetchApp : Application() {
         private set
 
     private var startedActivities = 0
+
+    /**
+     * Scope уровня приложения.
+     *
+     * Нужен для работы, которая должна пережить закрытие activity: при
+     * «Поделиться» приложение может закрыться сразу, а ссылка — всё
+     * равно должна попасть в очередь и разобраться.
+     */
+    val appScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     override fun onCreate() {
         super.onCreate()

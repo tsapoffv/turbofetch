@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -44,6 +45,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.turbofetch.domain.link.LinkParser
 import com.turbofetch.ui.files.FilesScreen
 import com.turbofetch.ui.files.FilesViewModel
 import com.turbofetch.ui.queue.QueueScreen
@@ -56,6 +58,8 @@ import com.turbofetch.ui.theme.TurboFetchTheme
 import com.turbofetch.ui.theme.isBaybekod
 import com.turbofetch.ui.theme.livingAccentBrush
 import com.turbofetch.ui.theme.tabLabelStyle
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 
 class MainActivity : ComponentActivity() {
 
@@ -71,7 +75,13 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
-        handleIncomingLink(intent)
+        // Если ссылка пришла через «Поделиться» и юзер просил закрываться
+        // сразу — интерфейс не рисуем вовсе, только добавляем ссылку в фоне.
+        val closing = handleIncomingLink(intent)
+        if (closing) {
+            finish()
+            return
+        }
         requestNotificationPermissionIfNeeded()
 
         setContent {
@@ -123,29 +133,50 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleIncomingLink(intent)
+        if (handleIncomingLink(intent)) finish()
     }
 
     /**
      * Забирает ссылку из «Поделиться» или из клика по ссылке в браузере.
      * Интент очищаем, иначе при повторном показе activity ссылка добавится дважды.
+     *
+     * @return `true`, если activity закрывается и интерфейс рисовать не нужно.
      */
-    private fun handleIncomingLink(intent: Intent?) {
+    private fun handleIncomingLink(intent: Intent?): Boolean {
         when (intent?.action) {
             Intent.ACTION_SEND -> {
-                intent.getStringExtra(Intent.EXTRA_TEXT)?.takeIf { it.isNotBlank() }?.let {
-                    queueViewModel.addLink(it)
-                }
+                val text = intent.getStringExtra(Intent.EXTRA_TEXT)?.takeIf { it.isNotBlank() }
                 intent.removeExtra(Intent.EXTRA_TEXT)
+                if (text == null) return false
+
+                // Юзер просил не открывать приложение: ссылка уходит в очередь
+                // в фоне, окно закрывается. Но только если ссылка опознана —
+                // иначе ошибку будет некому показать.
+                if (closeOnShareEnabled() && LinkParser.parse(text) != null) {
+                    queueViewModel.addLinkDetached(text)
+                    Toast.makeText(this, "Ссылка добавлена в очередь", Toast.LENGTH_SHORT).show()
+                    return true
+                }
+                queueViewModel.addLink(text)
             }
 
             Intent.ACTION_VIEW -> {
-                intent.dataString?.takeIf { it.isNotBlank() }?.let {
-                    queueViewModel.addLink(it)
-                }
+                val data = intent.dataString?.takeIf { it.isNotBlank() }
                 intent.data = null
+                if (data == null) return false
+                queueViewModel.addLink(data)
             }
         }
+        return false
+    }
+
+    /**
+     * Читает настройку синхронно: решать, закроемся ли мы, нужно до первой
+     * отрисовки, иначе окно приложения мелькнёт. Чтение из локальной SQLite
+     * занимает единицы миллисекунд, поэтому блокировка тут безопасна.
+     */
+    private fun closeOnShareEnabled(): Boolean = runBlocking(Dispatchers.IO) {
+        (application as TurboFetchApp).container.settingsRepository.current().closeOnShare
     }
 
     private fun requestNotificationPermissionIfNeeded() {

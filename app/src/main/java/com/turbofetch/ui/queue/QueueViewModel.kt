@@ -11,6 +11,7 @@ import com.turbofetch.domain.link.LinkParser
 import com.turbofetch.domain.model.AppSettings
 import com.turbofetch.domain.model.DownloadTask
 import com.turbofetch.domain.model.MediaFormat
+import com.turbofetch.domain.model.MediaNaming
 import com.turbofetch.domain.model.QualityPreset
 import com.turbofetch.domain.model.TaskStatus
 import com.turbofetch.worker.DownloadScheduler
@@ -30,6 +31,9 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
     private val engine = container.downloadEngine
     private val scheduler = DownloadScheduler(container.workManager)
 
+    /** Scope приложения: работа переживает закрытие activity. */
+    private val appScope = (application as TurboFetchApp).appScope
+
     val tasks: StateFlow<List<DownloadTask>> = repository.observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -42,23 +46,40 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
     /** Принимает ссылку из «Поделиться» или из поля ввода. */
     fun addLink(raw: String) {
         viewModelScope.launch {
-            val parsed = LinkParser.parse(raw)
-            if (parsed == null) {
-                _messages.value = "Не удалось распознать ссылку"
-                return@launch
-            }
-
-            val current = settingsRepository.current()
-            val task = DownloadTask(
-                id = UUID.randomUUID().toString(),
-                url = parsed.url,
-                source = parsed.source,
-                createdAt = System.currentTimeMillis(),
-                audioOnly = current.defaultAudioOnly,
-            )
-            repository.upsert(task)
-            probe(task)
+            addLinkInternal(raw)
         }
+    }
+
+    /**
+     * То же, но работа не зависит от activity.
+     *
+     * Нужно для режима «закрываться сразу»: окно приложения закрывается,
+     * а ссылка всё равно должна попасть в очередь и разобраться. Обычный
+     * [viewModelScope] при этом отменяется вместе с activity.
+     */
+    fun addLinkDetached(raw: String) {
+        appScope.launch {
+            addLinkInternal(raw)
+        }
+    }
+
+    private suspend fun addLinkInternal(raw: String) {
+        val parsed = LinkParser.parse(raw)
+        if (parsed == null) {
+            _messages.value = "Не удалось распознать ссылку"
+            return
+        }
+
+        val current = settingsRepository.current()
+        val task = DownloadTask(
+            id = UUID.randomUUID().toString(),
+            url = parsed.url,
+            source = parsed.source,
+            createdAt = System.currentTimeMillis(),
+            audioOnly = current.defaultAudioOnly,
+        )
+        repository.upsert(task)
+        probe(task)
     }
 
     /** Запрашивает метаданные и список форматов. */
@@ -70,10 +91,15 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
             onSuccess = { info ->
                 val settings = settingsRepository.current()
                 val audioStreams = info.formats.filter { it.hasAudio && !it.hasVideo }
-                val picked = if (settings.defaultAudioOnly) {
-                    audioStreams.maxByOrNull { it.bitrate }
-                } else {
-                    QualityPreset.pick(info.formats, settings.defaultQuality)
+                val picked = when {
+                    // Площадка отдаёт только звук (SoundCloud, Spotify):
+                    // видеоформатов нет, и пресет качества тут не о чем —
+                    // берём лучший по битрейту.
+                    settings.defaultAudioOnly ||
+                        MediaNaming.isAudioOnlySource(info.formats) ->
+                        audioStreams.maxByOrNull { it.bitrate }
+
+                    else -> QualityPreset.pick(info.formats, settings.defaultQuality)
                 }
 
                 // Если выбранное видео идёт без звука (DASH), сразу подбираем

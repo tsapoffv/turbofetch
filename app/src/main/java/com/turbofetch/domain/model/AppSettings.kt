@@ -33,6 +33,13 @@ data class AppSettings(
     val theme: AppTheme = AppTheme.WARM_PAPER,
     /** Тёмная тема. Игнорируется темой без тёмного варианта. */
     val darkMode: Boolean = false,
+    /**
+     * Закрывать приложение сразу после «Поделиться».
+     *
+     * Ссылка всё равно попадёт в очередь и скачается в фоне — просто окно
+     * приложения не открывается.
+     */
+    val closeOnShare: Boolean = false,
 ) {
     companion object {
         const val DEFAULT_TEMPLATE = "{title}_{quality}.{ext}"

@@ -47,6 +47,15 @@ object Migrations {
         }
     }
 
+    /** 4 → 5: настройка «закрывать сразу после «Поделиться». */
+    val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "ALTER TABLE `settings` ADD COLUMN `closeOnShare` INTEGER NOT NULL DEFAULT 0",
+            )
+        }
+    }
+
     /** Все миграции по порядку. */
-    val ALL: Array<Migration> = arrayOf(MIGRATION_2_3, MIGRATION_3_4)
+    val ALL: Array<Migration> = arrayOf(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 }
