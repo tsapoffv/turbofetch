@@ -85,4 +85,5 @@ class MediaStoreWriter(private val context: Context) {
         }
         return Uri.fromFile(target).toString()
     }
+
 }

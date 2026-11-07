@@ -168,6 +168,26 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         }.getOrDefault(false)
     }
 
+    /**
+     * Очистить очередь разом.
+     *
+     * Задания в работе не трогаем — их ещё качает воркер, и простое
+     * удаление оставило бы загрузки без записи.
+     */
+    fun clearQueue() {
+        viewModelScope.launch {
+            val active = tasks.value.filter { it.status.isActive }
+            active.forEach { scheduler.cancel(it.id) }
+
+            repository.clear()
+            _messages.value = if (active.isEmpty()) {
+                "Очередь очищена"
+            } else {
+                "Очередь очищена, загрузок отменено: ${active.size}"
+            }
+        }
+    }
+
     fun consumeMessage() {
         _messages.value = null
     }

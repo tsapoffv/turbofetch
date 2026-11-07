@@ -16,6 +16,7 @@ import com.turbofetch.data.repo.TaskRepository
 import com.turbofetch.domain.engine.DownloadEngine
 import com.turbofetch.domain.engine.DownloadProgress
 import com.turbofetch.domain.engine.DownloadRequest
+import com.turbofetch.domain.model.DownloadedFile
 import com.turbofetch.domain.model.FileNameTemplate
 import com.turbofetch.domain.model.MediaFormat
 import com.turbofetch.domain.model.TaskStatus
@@ -223,6 +224,29 @@ class DownloadWorker(
             isAudio = current.audioOnly,
         )
         repository.updateOutput(taskId, uri)
+
+        // Готовый файл попадает в историю скачанного — к нему можно
+        // вернуться позже, открыть или удалить.
+        container.fileRepository.upsert(
+            DownloadedFile(
+                id = taskId,
+                taskId = taskId,
+                title = current.title ?: current.url,
+                fileName = fileName,
+                uri = uri,
+                mimeType = mimeType,
+                sizeBytes = finalFile.length(),
+                source = current.source,
+                thumbnailUrl = current.thumbnailUrl,
+                createdAt = System.currentTimeMillis(),
+            ),
+        )
+
+        // Задача свою работу сделала: убираем её из очереди. Очередь —
+        // только для тех, что ещё предстоит скачать; всё скачанное живёт
+        // во вкладке «Скачанное».
+        repository.delete(taskId)
+
         videoFile.delete()
         audioFile?.delete()
         mergedFile.takeIf { it != videoFile }?.delete()

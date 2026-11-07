@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TurboFetch — 5 вариантов дизайна</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0d0e12;
+    color: #e8eaf0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
+    padding: 40px 24px 80px;
+    line-height: 1.5;
+  }
+
+  .intro { max-width: 900px; margin: 0 auto 48px; }
+  .intro h1 { font-size: 30px; letter-spacing: -.5px; margin-bottom: 10px; }
+  .intro p { color: #8b93a5; font-size: 15px; }
+  .intro code {
+    background: #1b1e27; padding: 2px 7px; border-radius: 5px;
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 13px; color: #d8ff4d;
+  }
+
+  .themes { display: flex; flex-direction: column; gap: 64px; }
+
+  .theme { max-width: 1080px; margin: 0 auto; }
+  .theme-head { margin-bottom: 20px; }
+  .theme-num {
+    display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: 1.2px;
+    padding: 3px 10px; border-radius: 20px; margin-bottom: 10px;
+  }
+  .theme-head h2 { font-size: 22px; letter-spacing: -.3px; margin-bottom: 6px; }
+  .theme-head p { color: #8b93a5; font-size: 14px; max-width: 720px; }
+
+  /* ---------- каркас телефона ---------- */
+  .stage { display: flex; gap: 28px; align-items: flex-start; flex-wrap: wrap; }
+  .phone {
+    width: 360px; flex: 0 0 360px;
+    border-radius: 34px; padding: 10px;
+    background: #191b22; box-shadow: 0 30px 70px rgba(0,0,0,.55);
+  }
+  .screen { border-radius: 26px; overflow: hidden; height: 760px; position: relative; }
+
+  .notes { flex: 1 1 320px; min-width: 280px; color: #8b93a5; font-size: 14px; }
+  .notes h3 { color: #e8eaf0; font-size: 15px; margin: 18px 0 8px; }
+  .notes ul { padding-left: 18px; }
+  .notes li { margin-bottom: 5px; }
+  .notes b { color: #cdd3df; font-weight: 600; }
+  .swatches { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .sw { width: 30px; height: 30px; border-radius: 8px; border: 1px solid rgba(255,255,255,.12); }
+
+  /* ---------- общие детали ---------- */
+  .row { display: flex; align-items: center; gap: 12px; }
+  .thumb {
+    width: 64px; height: 64px; border-radius: 14px; flex: 0 0 64px;
+    background: linear-gradient(135deg,#3a3f4d,#22262f);
+    display: grid; place-items: center; font-size: 22px;
+  }
+  .t1 { font-weight: 700; font-size: 14.5px; line-height: 1.3; }
+  .t2 { font-size: 12px; opacity: .62; margin-top: 3px; }
+  .progress { height: 6px; border-radius: 4px; overflow: hidden; }
+  .progress > i { display: block; height: 100%; border-radius: 4px; }
+  .badge {
+    font-size: 10.5px; font-weight: 700; letter-spacing: .3px;
+    padding: 2.5px 8px; border-radius: 20px;
+  }
+  .btn {
+    display: inline-flex; align-items: center; gap: 7px; justify-content: center;
+    font-weight: 700; font-size: 13.5px; border: 0; cursor: pointer;
+  }
+  .input { display: flex; align-items: center; gap: 10px; }
+  .input > div:first-child { flex: 1; }
+
+  /* ================= 1. NEON GRAPHITE ================= */
+  .t1-theme .theme-num { background: #d8ff4d; color: #12140c; }
+  .t1-theme .screen {
+    background: #0a0b0e;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  .t1-theme .top { padding: 22px 20px 14px; border-bottom: 1px solid #1c2028; }
+  .t1-theme .logo { display: flex; align-items: center; gap: 9px; }
+  .t1-theme .mark {
+    width: 26px; height: 26px; border-radius: 7px; background: #d8ff4d;
+    display: grid; place-items: center; color: #12140c; font-weight: 900; font-size: 14px;
+  }
+  .t1-theme .name { font-size: 19px; font-weight: 800; letter-spacing: -.6px; }
+  .t1-theme .cnt { font-size: 11px; color: #6f7789; font-family: ui-monospace, monospace; }
+  .t1-theme .inp { padding: 14px 20px; }
+  .t1-theme .input > div:first-child {
+    background: #14161c; border: 1px solid #22262f; border-radius: 11px;
+    padding: 11px 13px; color: #6f7789; font-size: 13.5px;
+  }
+  .t1-theme .send {
+    width: 40px; height: 40px; border-radius: 11px; background: #d8ff4d;
+    color: #12140c; display: grid; place-items: center; font-weight: 900;
+  }
+  .t1-theme .list { padding: 4px 20px 20px; display: flex; flex-direction: column; gap: 10px; }
+  .t1-theme .card {
+    background: #13151b; border: 1px solid #20242d; border-radius: 13px; padding: 12px;
+  }
+  .t1-theme .card.active { border-color: #d8ff4d; }
+  .t1-theme .thumb { border-radius: 9px; }
+  .t1-theme .badge { background: #1c2410; color: #d8ff4d; }
+  .t1-theme .badge.grey { background: #1b1e26; color: #8b93a5; }
+  .t1-theme .progress { background: #22262f; }
+  .t1-theme .progress > i { background: linear-gradient(90deg,#d8ff4d,#9dff9b); }
+  .t1-theme .btn { background: #d8ff4d; color: #12140c; border-radius: 10px; padding: 9px 15px; }
+  .t1-theme .btn.ghost { background: #1b1e26; color: #cdd3df; }
+  .t1-theme .del { color: #4e5566; font-size: 17px; }
+  .t1-theme .grab { color: #3d434f; font-size: 15px; letter-spacing: -2px; }
+  .t1-theme .bottom { position: absolute; left: 20px; right: 20px; bottom: 18px; }
+  .t1-theme .big {
+    width: 100%; background: #d8ff4d; color: #12140c; border-radius: 12px;
+    padding: 14px; font-weight: 800; font-size: 14.5px; text-align: center;
+  }
+
+  /* ================= 2. SOFT GLASS ================= */
+  .t2-theme .theme-num { background: #a394ff; color: #12101f; }
+  .t2-theme .screen {
+    background: radial-gradient(120% 90% at 15% 0%, #1e2140 0%, #0d0f1a 55%, #090a12 100%);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  .t2-theme .top { padding: 26px 20px 10px; }
+  .t2-theme .name { font-size: 25px; font-weight: 700; letter-spacing: -.9px; }
+  .t2-theme .cnt { font-size: 12px; color: #9aa0c0; margin-top: 2px; }
+  .t2-theme .inp { padding: 12px 20px 16px; }
+  .t2-theme .input > div:first-child {
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.11);
+    border-radius: 24px; padding: 12px 18px; color: #8b90b0; font-size: 13.5px;
+    backdrop-filter: blur(14px);
+  }
+  .t2-theme .send {
+    width: 44px; height: 44px; border-radius: 22px; flex: 0 0 44px;
+    background: linear-gradient(135deg,#a394ff,#6f8bff); color: #fff;
+    display: grid; place-items: center; font-weight: 800;
+    box-shadow: 0 6px 20px rgba(163,148,255,.42);
+  }
+  .t2-theme .list { padding: 2px 20px 20px; display: flex; flex-direction: column; gap: 12px; }
+  .t2-theme .card {
+    background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 24px; padding: 14px; backdrop-filter: blur(18px);
+  }
+  .t2-theme .thumb { border-radius: 18px; }
+  .t2-theme .badge { background: rgba(163,148,255,.22); color: #c3b8ff; }
+  .t2-theme .badge.grey { background: rgba(255,255,255,.08); color: #9aa0c0; }
+  .t2-theme .progress { background: rgba(255,255,255,.1); height: 7px; }
+  .t2-theme .progress > i { background: linear-gradient(90deg,#a394ff,#6f8bff); }
+  .t2-theme .btn { background: rgba(255,255,255,.1); color: #e8eaf0; border-radius: 20px; padding: 9px 16px; }
+  .t2-theme .btn.grad { background: linear-gradient(135deg,#a394ff,#6f8bff); color: #fff; }
+  .t2-theme .del { color: #6f7590; font-size: 17px; }
+  .t2-theme .grab { color: #6f7590; font-size: 15px; letter-spacing: -2px; }
+  .t2-theme .bottom { position: absolute; left: 20px; right: 20px; bottom: 20px; }
+  .t2-theme .big {
+    width: 100%; border-radius: 26px; padding: 15px; font-weight: 700; font-size: 15px;
+    text-align: center; color: #fff;
+    background: linear-gradient(135deg,#a394ff,#6f8bff);
+    box-shadow: 0 12px 30px rgba(111,139,255,.34);
+  }
+
+  /* ================= 3. WARM PAPER ================= */
+  .t3-theme .theme-num { background: #1b1b1b; color: #fff; }
+  .t3-theme .screen { background: #faf9f6; color: #16181c; font-family: Georgia, 'Times New Roman', serif; }
+  .t3-theme .top { padding: 26px 24px 8px; }
+  .t3-theme .name { font-size: 30px; font-weight: 400; letter-spacing: -1px; }
+  .t3-theme .cnt { font-size: 13px; color: #8a8578; margin-top: 4px; font-family: -apple-system, sans-serif; }
+  .t3-theme .inp { padding: 14px 24px 18px; }
+  .t3-theme .input > div:first-child {
+    border-bottom: 1.5px solid #d8d3c6; padding: 11px 2px; color: #a8a294;
+    font-size: 14px; font-family: -apple-system, sans-serif;
+  }
+  .t3-theme .send {
+    width: 38px; height: 38px; border-radius: 50%; flex: 0 0 38px;
+    background: #16181c; color: #faf9f6; display: grid; place-items: center; font-weight: 700;
+  }
+  .t3-theme .list { padding: 0 24px 20px; display: flex; flex-direction: column; }
+  .t3-theme .card { padding: 16px 0; border-bottom: 1px solid #e6e1d6; }
+  .t3-theme .thumb { border-radius: 4px; width: 58px; height: 58px; flex-basis: 58px; font-size: 18px; }
+  .t3-theme .badge { background: #16181c; color: #faf9f6; border-radius: 3px; font-size: 10px; }
+  .t3-theme .badge.grey { background: #ebe7dd; color: #6f6a5e; }
+  .t3-theme .progress { background: #e6e1d6; height: 3px; }
+  .t3-theme .progress > i { background: #16181c; }
+  .t3-theme .btn { background: transparent; color: #16181c; padding: 4px 0; font-size: 13px; text-decoration: underline; }
+  .t3-theme .btn.ghost { color: #8a8578; }
+  .t3-theme .del { color: #b8b2a4; font-size: 16px; }
+  .t3-theme .grab { color: #c9c3b6; font-size: 14px; letter-spacing: -2px; }
+  .t3-theme .bottom { position: absolute; left: 24px; right: 24px; bottom: 20px; }
+  .t3-theme .big {
+    width: 100%; background: #16181c; color: #faf9f6; border-radius: 2px;
+    padding: 14px; font-weight: 600; font-size: 14px; text-align: center;
+    font-family: -apple-system, sans-serif;
+  }
+
+  /* ================= 4. BRUTALIST MONO ================= */
+  .t4-theme .theme-num { background: #fff; color: #000; }
+  .t4-theme .screen { background: #0a0a0a; color: #f2f2f2; font-family: ui-monospace, 'SF Mono', Menlo, monospace; }
+  .t4-theme .top { padding: 20px 18px 12px; border-bottom: 2px solid #f2f2f2; }
+  .t4-theme .logo { display: flex; align-items: baseline; gap: 8px; }
+  .t4-theme .mark { background: #f2f2f2; color: #0a0a0a; font-weight: 900; padding: 1px 6px; font-size: 13px; }
+  .t4-theme .name { font-size: 19px; font-weight: 800; letter-spacing: -1px; }
+  .t4-theme .cnt { font-size: 11px; color: #6b6b6b; }
+  .t4-theme .inp { padding: 12px 18px; border-bottom: 1px solid #2a2a2a; }
+  .t4-theme .input > div:first-child {
+    border: 1px solid #3a3a3a; padding: 10px 12px; color: #6b6b6b; font-size: 13px;
+  }
+  .t4-theme .send {
+    width: 38px; height: 38px; background: #f2f2f2; color: #0a0a0a;
+    display: grid; place-items: center; font-weight: 900;
+  }
+  .t4-theme .list { padding: 4px 18px 20px; display: flex; flex-direction: column; gap: 0; }
+  .t4-theme .card { border-bottom: 1px solid #2a2a2a; padding: 14px 0; }
+  .t4-theme .thumb { border-radius: 0; width: 56px; height: 56px; flex-basis: 56px; filter: grayscale(1) contrast(1.15); font-size: 16px; }
+  .t4-theme .badge { background: transparent; border: 1px solid #f2f2f2; color: #f2f2f2; border-radius: 0; }
+  .t4-theme .badge.grey { border-color: #3a3a3a; color: #6b6b6b; }
+  .t4-theme .progress { background: #222; height: 8px; border-radius: 0; border: 1px solid #333; }
+  .t4-theme .progress > i { background: repeating-linear-gradient(90deg,#f2f2f2 0 6px,transparent 6px 8px); border-radius: 0; }
+  .t4-theme .btn { background: #f2f2f2; color: #0a0a0a; border-radius: 0; padding: 8px 14px; font-size: 12px; text-transform: uppercase; }
+  .t4-theme .btn.ghost { background: transparent; color: #f2f2f2; border: 1px solid #3a3a3a; }
+  .t4-theme .del { color: #6b6b6b; font-size: 16px; }
+  .t4-theme .grab { color: #4a4a4a; font-size: 14px; letter-spacing: -2px; }
+  .t4-theme .bottom { position: absolute; left: 18px; right: 18px; bottom: 18px; }
+  .t4-theme .big {
+    width: 100%; background: #f2f2f2; color: #0a0a0a; border-radius: 0;
+    padding: 14px; font-weight: 800; font-size: 13px; text-align: center;
+    text-transform: uppercase;
+  }
+
+  /* ================= 5. AURORA MESH ================= */
+  .t5-theme .theme-num { background: linear-gradient(135deg,#00E0FF,#B14BFF); color: #08101a; }
+  .t5-theme .screen {
+    background: #080B14;
+    background-image:
+      radial-gradient(60% 45% at 15% 8%, rgba(0,224,255,.30) 0%, transparent 60%),
+      radial-gradient(55% 40% at 95% 18%, rgba(177,75,255,.30) 0%, transparent 60%),
+      radial-gradient(70% 50% at 50% 105%, rgba(0,255,180,.16) 0%, transparent 60%);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  .t5-theme .top { padding: 24px 20px 10px; }
+  .t5-theme .logo { display: flex; align-items: center; gap: 10px; }
+  .t5-theme .mark {
+    width: 34px; height: 34px; border-radius: 12px;
+    background: linear-gradient(135deg,#00E0FF,#B14BFF);
+    display: grid; place-items: center; color: #fff; font-weight: 900; font-size: 17px;
+    box-shadow: 0 8px 26px rgba(0,224,255,.36);
+  }
+  .t5-theme .name {
+    font-size: 23px; font-weight: 800; letter-spacing: -.8px;
+    background: linear-gradient(90deg,#fff,#9fe8ff 60%,#c8a6ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .t5-theme .cnt { font-size: 12px; color: #8fa3c4; margin-top: 2px; }
+  .t5-theme .inp { padding: 12px 20px 16px; }
+  .t5-theme .input > div:first-child {
+    background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.13);
+    border-radius: 18px; padding: 12px 16px; color: #8fa3c4; font-size: 13.5px;
+    backdrop-filter: blur(16px);
+  }
+  .t5-theme .send {
+    width: 44px; height: 44px; border-radius: 18px; flex: 0 0 44px;
+    background: linear-gradient(135deg,#00E0FF,#B14BFF); color: #fff;
+    display: grid; place-items: center; font-weight: 800;
+    box-shadow: 0 8px 24px rgba(120,90,255,.4);
+  }
+  .t5-theme .list { padding: 2px 20px 20px; display: flex; flex-direction: column; gap: 13px; }
+  .t5-theme .card {
+    background: rgba(14,20,36,.62); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 22px; padding: 14px; backdrop-filter: blur(20px);
+    box-shadow: 0 12px 34px rgba(0,0,0,.42);
+  }
+  .t5-theme .card.active { border-color: rgba(0,224,255,.5); }
+  .t5-theme .thumb { border-radius: 16px; }
+  .t5-theme .badge { background: linear-gradient(135deg,rgba(0,224,255,.25),rgba(177,75,255,.25)); color: #9fe8ff; }
+  .t5-theme .badge.grey { background: rgba(255,255,255,.09); color: #8fa3c4; }
+  .t5-theme .progress { background: rgba(255,255,255,.1); height: 8px; }
+  .t5-theme .progress > i { background: linear-gradient(90deg,#00E0FF,#B14BFF,#00FFB4); }
+  .t5-theme .btn { background: rgba(255,255,255,.1); color: #e6f0ff; border-radius: 16px; padding: 10px 17px; }
+  .t5-theme .btn.grad { background: linear-gradient(135deg,#00E0FF,#B14BFF); color: #fff; }
+  .t5-theme .del { color: #64748b; font-size: 17px; }
+  .t5-theme .grab { color: #64748b; font-size: 15px; letter-spacing: -2px; }
+  .t5-theme .bottom { position: absolute; left: 20px; right: 20px; bottom: 20px; }
+  .t5-theme .big {
+    width: 100%; border-radius: 18px; padding: 15px; font-weight: 700; font-size: 15px;
+    text-align: center; color: #06121a;
+    background: linear-gradient(135deg,#00E0FF,#B14BFF,#00FFB4);
+    box-shadow: 0 14px 36px rgba(0,140,255,.34);
+  }
+</style>
+</head>
+<body>
+
+<div class="intro">
+  <h1>TurboFetch — варианты дизайна</h1>
+  <p>Пять стилей одного и того же экрана очереди: лента, ввод ссылки, карточки задач
+  с превью и прогрессом, кнопка «Скачать всё». Выбери номер — перенесу его в Compose
+  и перекрашу всю тему приложения. Файл открывается в любом браузере:
+  <code>design/templates.html</code></p>
+</div>
+
+<div class="themes">
+
+  <!-- ============ 1 ============ -->
+  <section class="theme t1-theme">
+    <div class="theme-head">
+      <span class="theme-num">01</span>
+      <h2>Neon Graphite</h2>
+      <p>Графит, лаймовый акцент, острые углы, моноширинные служебные надписи.
+      Выглядит как утилита для гиков, а не как игрушка.</p>
+    </div>
+    <div class="stage">
+      <div class="phone"><div class="screen">
+        <div class="top">
+          <div class="logo">
+            <div class="mark">T</div>
+            <div>
+              <div class="name">TurboFetch</div>
+              <div class="cnt">3 задачи · 1 активна</div>
+            </div>
+          </div>
+        </div>
+        <div class="inp">
+          <div class="input">
+            <div>Вставьте ссылку на видео</div>
+            <div class="send">→</div>
+          </div>
+        </div>
+        <div class="list">
+          <div class="card active">
+            <div class="row">
+              <div class="grab">≡</div>
+              <div class="thumb">🎬</div>
+              <div style="flex:1">
+                <div class="t1">Rick Astley — Never Gonna Give You Up (4K Remaster)</div>
+                <div class="t2">YouTube · 1080p</div>
+              </div>
+              <div class="del">🗑</div>
+            </div>
+            <div style="margin-top:11px" class="progress"><i style="width:83%"></i></div>
+            <div class="row" style="margin-top:9px;justify-content:space-between">
+              <div style="font-size:11.5px;color:#8b93a5;font-family:ui-monospace,monospace">83% · 70.2 МБ / 84.3 МБ</div>
+              <div class="btn ghost" style="padding:6px 11px;font-size:12px">Отменить</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="row">
+              <div class="grab">≡</div>
+              <div class="thumb">🎵</div>
+              <div style="flex:1">
+                <div class="t1">Tag 1 Friend reverse this Video…</div>
+                <div class="t2">TikTok · mp3 · 5.1 МБ</div>
+              </div>
+              <span class="badge">ГОТОВО</span>
+            </div>
+            <div style="margin-top:10px"><div class="btn" style="padding:8px 14px;font-size:12.5px">▶ Открыть</div></div>
+          </div>
+          <div class="card">
+            <div class="row">
+              <div class="grab">≡</div>
+              <div class="thumb">✈️</div>
+              <div style="flex:1">
+                <div class="t1">Русская армия. Обстановка.</div>
+                <div class="t2">X · 832 kbps</div>
+              </div>
+              <span class="badge grey">В ОЧЕРЕДИ</span>
+            </div>
+            <div style="margin-top:10px"><div class="btn" style="padding:8px 14px;font-size:12.5px">↓ Скачать</div></div>
+          </div>
+        </div>
+        <div class="bottom"><div class="big">↓ Скачать всё</div></div>
+      </div></div>
+      <div class="notes">
+        <h3>Характер</h3>
+        <ul>
+          <li>Плотная сетка, минимум воздуха, всё по делу</li>
+          <li>Лайм только на действиях — на кнопках и прогрессе</li>
+          <li>Служебные числа моноширинным: видно, что это загрузка, а не соцсеть</li>
+        </ul>
+        <h3>Палитра</h3>
+        <div class="swatches">
+          <div class="sw" style="background:#0a0b0e"></div>
+          <div class="sw" style="background:#13151b"></div>
+          <div class="sw" style="background:#d8ff4d"></div>
+          <div class="sw" style="background:#22262f"></div>
+          <div class="sw" style="background:#8b93a5"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 2 ============ -->
+  <section class="theme t2-theme">
+    <div class="theme-head">
+      <span class="theme-num">02</span>
+      <h2>Soft Glass</h2>
+      <p>Тёмно-синяя база, полупрозрачные карточки с размытием, крупные скругления,
+      фиолетовый градиент. «Премиальный» вид, ближе к приложениям из стора.</p>
+    </div>
+    <div class="stage">
+      <div class="phone"><div class="screen">
+        <div class="top">
+          <div class="name">TurboFetch</div>
+          <div class="cnt">3 задачи · 1 активна</div>
+        </div>
+        <div class="inp">
+          <div class="input">
+            <div>Вставьте ссылку на видео</div>
+            <div class="send">→</div>
+          </div>
+        </div>
+        <div class="list">
+          <div class="card">
+            <div class="row">
+              <div class="thumb">🎬</div>
+              <div style="flex:1">
+                <div class="t1">Rick Astley — Never Gonna Give You Up (4K Remaster)</div>
+                <div class="t2">YouTube · 1080p</div>
+              </div>
+              <div class="del">🗑</div>
+            </div>
+            <div style="margin-top:12px" class="progress"><i style="width:83%"></i></div>
+            <div class="row" style="margin-top:10px;justify-content:space-between">
+              <div style="font-size:12px;color:#9aa0c0">83%</div>
+              <div class="btn" style="padding:7px 14px;font-size:12.5px">Отменить</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="row">
+              <div class="thumb">🎵</div>
+              <div style="flex:1">
+                <div class="t1">Tag 1 Friend reverse this Video…</div>
+                <div class="t2">TikTok · mp3 · 5.1 МБ</div>
+              </div>
+              <span class="badge">ГОТОВО</span>
+            </div>
+            <div style="margin-top:11px"><div class="btn grad" style="padding:9px 16px;font-size:13px">▶ Открыть</div></div>
+          </div>
+          <div class="card">
+            <div class="row">
+              <div class="thumb">✈️</div>
+              <div style="flex:1">
+                <div class="t1">Русская армия. Обстановка.</div>
+                <div class="t2">X · 832 kbps</div>
+              </div>
+              <span class="badge grey">В ОЧЕРЕДИ</span>
+            </div>
+            <div style="margin-top:11px"><div class="btn grad" style="padding:9px 16px;font-size:13px">↓ Скачать</div></div>
+          </div>
+        </div>
+        <div class="bottom"><div class="big">↓ Скачать всё</div></div>
+      </div></div>
+      <div class="notes">
+        <h3>Характер</h3>
+        <ul>
+          <li>Максимум воздуха, всё крупно и мягко</li>
+          <li>Карточки «стеклянные» — фон виден сквозь них</li>
+          <li>Фиолетовый градиент на главных действиях</li>
+        </ul>
+        <h3>Палитра</h3>
+        <div class="swatches">
+          <div class="sw" style="background:#0d0f1a"></div>
+          <div class="sw" style="background:#1e2140"></div>
+          <div class="sw" style="background:#a394ff"></div>
+          <div class="sw" style="background:#6f8bff"></div>
+          <div class="sw" style="background:#9aa0c0"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 3 ============ -->
+  <section class="theme t3-theme">
+    <div class="theme-head">
+      <span class="theme-num">03</span>
+      <h2>Warm Paper</h2>
+      <p>Светлая тёплая бумага, крупная антиква, минимум линий и рамок.
+      Спокойно, дорого, «как хороший редактор» — в отличие от тёмных тем не режет глаза.</p>
+    </div>
+    <div class="stage">
+      <div class="phone"><div class="screen" style="background:#faf9f6">
+        <div class="top">
+          <div class="name">TurboFetch</div>
+          <div class="cnt">3 задачи · 1 активна</div>
+        </div>
+        <div class="inp">
+          <div class="input">
+            <div>Вставьте ссылку на видео</div>
+            <div class="send">→</div>
+          </div>
+        </div>
+        <div class="list">
+          <div class="card">
+            <div class="row">
+              <div class="grab">≡</div>
+              <div class="thumb">🎬</div>
+              <div style="flex:1">
+                <div class="t1" style="font-weight:400;font-size:16px">Rick Astley — Never Gonna Give You Up</div>
+                <div class="t2">YouTube · 1080p</div>
+              </div>
+              <div class="del">🗑</div>
+            </div>
+            <div style="margin-top:12px" class="progress"><i style="width:83%"></i></div>
+            <div class="row" style="margin-top:8px;justify-content:space-between">
+              <div style="font-size:11.5px;color:#8a8578">83% · 70.2 МБ из 84.3 МБ</div>
+              <div class="btn" style="font-size:12.5px">Отменить</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="row">
+              <div class="grab">≡</div>
+              <div class="thumb">🎵</div>
+              <div style="flex:1">
+                <div class="t1" style="font-weight:400;font-size:16px">Tag 1 Friend reverse this Video…</div>
+                <div class="t2">TikTok · mp3 · 5.1 МБ</div>
+              </div>
+              <span class="badge">ГОТОВО</span>
+            </div>
+            <div style="margin-top:8px"><div class="btn" style="font-size:13px">▶ Открыть</div></div>
+          </div>
+          <div class="card">
+            <div class="row">
+              <div class="grab">≡</div>
+              <div class="thumb">✈️</div>
+              <div style="flex:1">
+                <div class="t1" style="font-weight:400;font-size:16px">Русская армия. Обстановка.</div>
+                <div class="t2">X · 832 kbps</div>
+              </div>
+              <span class="badge grey">В ОЧЕРЕДИ</span>
+            </div>
+            <div style="margin-top:8px"><div class="btn" style="font-size:13px">↓ Скачать</div></div>
+          </div>
+        </div>
+        <div class="bottom"><div class="big">↓ Скачать всё</div></div>
+      </div></div>
+      <div class="notes">
+        <h3>Характер</h3>
+        <ul>
+          <li>Только тёмный текст на бумаге, никаких карточек-коробок</li>
+          <li>Заголовки антиквой — приложение выглядит как журнал</li>
+          <li>Разделители тонкими линиями вместо заливок</li>
+        </ul>
+        <h3>Палитра</h3>
+        <div class="swatches">
+          <div class="sw" style="background:#faf9f6"></div>
+          <div class="sw" style="background:#16181c"></div>
+          <div class="sw" style="background:#8a8578"></div>
+          <div class="sw" style="background:#e6e1d6"></div>
+          <div class="sw" style="background:#ebe7dd"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 4 ============ -->
+  <section class="theme t4-theme">
+    <div class="theme-head">
+      <span class="theme-num">04</span>
+      <h2>Brutalist Mono</h2>
+      <p>Чёрно-белое, моноширинный, без скруглений и градиентов. Прогресс-полоса
+      из штрихов. Выглядит как терминал — максимально «свой» и непохожий на всех.</p>
+    </div>
+    <div class="stage">
+      <div class="phone"><div class="screen">
+        <div class="top">
+          <div class="logo">
+            <div class="mark">TF</div>
+            <div>
+              <div class="name">TURBOFETCH</div>
+              <div class="cnt">3 tasks · 1 active</div>
+            </div>
+          </div>
+        </div>
+        <div class="inp">
+          <div class="input">
+            <div>вставьте ссылку на видео</div>
+            <div class="send">→</div>
+          </div>
+        </div>
+        <div class="list">
+          <div class="card">
+            <div class="row">
+              <div class="grab">≡</div>
+              <div class="thumb">▶</div>
+              <div style="flex:1">
+                <div class="t1" style="font-size:12.5px">Rick Astley — Never Gonna Give You Up (4K Remaster)</div>
+                <div class="t2" style="font-family:inherit">YT · 1080P</div>
+              </div>
+              <div class="del">✕</div>
+            </div>
+            <div style="margin-top:11px" class="progress"><i style="width:83%"></i></div>
+            <div class="row" style="margin-top:8px;justify-content:space-between">
+              <div style="font-size:11px;color:#8b8b8b">83% · 70.2M/84.3M</div>
+              <div class="btn ghost" style="padding:5px 9px;font-size:11px">СТОП</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="row">
+              <div class="grab">≡</div>
+              <div class="thumb">♪</div>
+              <div style="flex:1">
+                <div class="t1" style="font-size:12.5px">Tag 1 Friend reverse this Video…</div>
+                <div class="t2" style="font-family:inherit">TT · MP3 · 5.1M</div>
+              </div>
+              <span class="badge">ГОТОВО</span>
+            </div>
+            <div style="margin-top:9px"><div class="btn" style="padding:7px 12px;font-size:11px">▶ ОТКРЫТЬ</div></div>
+          </div>
+          <div class="card">
+            <div class="row">
+              <div class="grab">≡</div>
+              <div class="thumb">✈</div>
+              <div style="flex:1">
+                <div class="t1" style="font-size:12.5px">Русская армия. Обстановка.</div>
+                <div class="t2" style="font-family:inherit">X · 832KBPS</div>
+              </div>
+              <span class="badge grey">В ОЧЕРЕДИ</span>
+            </div>
+            <div style="margin-top:9px"><div class="btn" style="padding:7px 12px;font-size:11px">↓ СКАЧАТЬ</div></div>
+          </div>
+        </div>
+        <div class="bottom"><div class="big">↓ Скачать всё</div></div>
+      </div></div>
+      <div class="notes">
+        <h3>Характер</h3>
+        <ul>
+          <li>Два цвета — больше ничего. Ни градиентов, ни теней</li>
+          <li>Полоса прогресса из штрихов, как в старых плеерах</li>
+          <li>Заголовки капсом — похоже на вывод утилиты</li>
+        </ul>
+        <h3>Палитра</h3>
+        <div class="swatches">
+          <div class="sw" style="background:#0a0a0a"></div>
+          <div class="sw" style="background:#f2f2f2"></div>
+          <div class="sw" style="background:#3a3a3a"></div>
+          <div class="sw" style="background:#6b6b6b"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 5 ============ -->
+  <section class="theme t5-theme">
+    <div class="theme-head">
+      <span class="theme-num">05</span>
+      <h2>Aurora Mesh</h2>
+      <p>Глубокий индиго с цветными пятнами, стеклянные карточки, градиент из
+      голубого в фиолетовый и зелёный. Самое «2026» из пяти.</p>
+    </div>
+    <div class="stage">
+      <div class="phone"><div class="screen">
+        <div class="top">
+          <div class="logo">
+            <div class="mark">T</div>
+            <div>
+              <div class="name">TurboFetch</div>
+              <div class="cnt">3 задачи · 1 активна</div>
+            </div>
+          </div>
+        </div>
+        <div class="inp">
+          <div class="input">
+            <div>Вставьте ссылку на видео</div>
+            <div class="send">→</div>
+          </div>
+        </div>
+        <div class="list">
+          <div class="card active">
+            <div class="row">
+              <div class="grab">≡</div>
+              <div class="thumb">🎬</div>
+              <div style="flex:1">
+                <div class="t1" style="font-size:15px;font-weight:650">Rick Astley — Never Gonna Give You Up (4K Remaster)</div>
+                <div class="t2">YouTube · 1080p</div>
+              </div>
+              <div class="del">🗑</div>
+            </div>
+            <div style="margin-top:12px" class="progress"><i style="width:83%"></i></div>
+            <div class="row" style="margin-top:11px;justify-content:space-between">
+              <div style="font-size:13px;font-weight:650;color:#9fe8ff">83%</div>
+              <div class="btn" style="padding:8px 15px;font-size:13px">Отменить</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="row">
+              <div class="grab">≡</div>
+              <div class="thumb">🎵</div>
+              <div style="flex:1">
+                <div class="t1" style="font-size:15px;font-weight:650">Tag 1 Friend reverse this Video…</div>
+                <div class="t2">TikTok · mp3 · 5.1 МБ</div>
+              </div>
+              <span class="badge">ГОТОВО</span>
+            </div>
+            <div style="margin-top:12px"><div class="btn grad" style="padding:10px 18px">▶ Открыть</div></div>
+          </div>
+          <div class="card">
+            <div class="row">
+              <div class="grab">≡</div>
+              <div class="thumb">✈️</div>
+              <div style="flex:1">
+                <div class="t1" style="font-size:15px;font-weight:650">Русская армия. Обстановка.</div>
+                <div class="t2">X · 832 kbps</div>
+              </div>
+              <span class="badge grey">В ОЧЕРЕДИ</span>
+            </div>
+            <div style="margin-top:12px"><div class="btn grad" style="padding:10px 18px">↓ Скачать</div></div>
+          </div>
+        </div>
+        <div class="bottom"><div class="big">↓ Скачать всё</div></div>
+      </div></div>
+      <div class="notes">
+        <h3>Характер</h3>
+        <ul>
+          <li>Живой градиентный фон, карточки из стекла поверх него</li>
+          <li>Градиент на прогрессе и на главной кнопке</li>
+          <li>Больше всего «продукта»: так сейчас выглядят новые приложения</li>
+        </ul>
+        <h3>Палитра</h3>
+        <div class="swatches">
+          <div class="sw" style="background:#080B14"></div>
+          <div class="sw" style="background:#00E0FF"></div>
+          <div class="sw" style="background:#B14BFF"></div>
+          <div class="sw" style="background:#00FFB4"></div>
+          <div class="sw" style="background:#8fa3c4"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
