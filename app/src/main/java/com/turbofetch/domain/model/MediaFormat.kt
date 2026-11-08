@@ -1,5 +1,7 @@
 package com.turbofetch.domain.model
 
+import androidx.compose.runtime.Immutable
+
 import kotlinx.serialization.Serializable
 
 /**
@@ -39,6 +41,7 @@ enum class PostProcess {
 }
 
 @Serializable
+@Immutable
 data class MediaFormat(
     val id: String,
     val label: String,

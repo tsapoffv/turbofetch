@@ -1,6 +1,7 @@
 package com.turbofetch.ui.files
 
 import android.app.Application
+import androidx.compose.runtime.Stable
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.turbofetch.TurboFetchApp
@@ -18,6 +19,8 @@ import kotlinx.coroutines.launch
  * Умеет убирать записи по одной и очищать историю разом. Файлы при этом
  * остаются на диске: история — это журнал, а не кладбище.
  */
+/** @Stable — см. пояснение в `QueueViewModel`. */
+@Stable
 class FilesViewModel(application: Application) : AndroidViewModel(application) {
 
     private val container = (application as TurboFetchApp).container

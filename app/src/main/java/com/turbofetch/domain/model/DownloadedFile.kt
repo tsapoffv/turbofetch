@@ -1,5 +1,7 @@
 package com.turbofetch.domain.model
 
+import androidx.compose.runtime.Immutable
+
 /**
  * Уже скачанный файл.
  *
@@ -8,6 +10,7 @@ package com.turbofetch.domain.model
  * отдельно, чтобы пользователь мог вернуться к файлу позже или удалить
  * его из галереи.
  */
+@Immutable
 data class DownloadedFile(
     val id: String,
     /** Задача, из которой получился файл. Может быть `null`, если задачу удалили. */
@@ -30,14 +33,25 @@ data class DownloadedFile(
      */
     val sourceUrl: String? = null,
 ) {
-    /** Размер файла для показа: «12,4 МБ». */
+    /**
+     * Размер файла для показа: «12,4 МБ».
+     *
+     * Форматируем вручную, а не через `String.format`: тот создаёт
+     * `Formatter` и ходит в локаль на каждый вызов, а геттер дёргается
+     * при каждой перерисовке строки списка.
+     */
     val sizeLabel: String
-        get() = when {
-            sizeBytes >= 1024L * 1024 * 1024 ->
-                String.format("%.1f ГБ", sizeBytes / (1024.0 * 1024 * 1024))
-            sizeBytes >= 1024L * 1024 ->
-                String.format("%.1f МБ", sizeBytes / (1024.0 * 1024))
-            sizeBytes >= 1024L -> String.format("%.1f КБ", sizeBytes / 1024.0)
-            else -> "$sizeBytes Б"
+        get() {
+            val (value, unit) = when {
+                sizeBytes >= 1024L * 1024 * 1024 ->
+                    sizeBytes / (1024.0 * 1024 * 1024) to "ГБ"
+                sizeBytes >= 1024L * 1024 ->
+                    sizeBytes / (1024.0 * 1024) to "МБ"
+                sizeBytes >= 1024L -> sizeBytes / 1024.0 to "КБ"
+                else -> return "$sizeBytes Б"
+            }
+            val tenths = Math.round(value * 10) / 10.0
+            // Запятая вместо точки — так размер читается по-русски.
+            return "${tenths.toString().replace('.', ',')} $unit"
         }
 }

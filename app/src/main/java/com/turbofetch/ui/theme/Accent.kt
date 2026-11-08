@@ -22,8 +22,10 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -52,6 +54,15 @@ import com.turbofetch.domain.model.AppTheme
 /** Какая тема активна — читается из любого места дерева композиции. */
 val LocalAppTheme = staticCompositionLocalOf { AppTheme.WARM_PAPER }
 
+/**
+ * Неоновый градиент — одна кисть на всё приложение.
+ *
+ * Раньше `Brush.linearGradient` создавался на каждый вызов, то есть на
+ * каждую строку очереди и на каждый кадр анимации. Кисть неизменяемая,
+ * поэтому её можно создать один раз.
+ */
+private val BaybekodBrush by lazy { Brush.linearGradient(BaybekodGradient) }
+
 /** Включена ли шуточная тема. */
 @Composable
 fun isBaybekod(): Boolean = LocalAppTheme.current == AppTheme.TURBOBAYBEKOD
@@ -63,7 +74,7 @@ fun isBaybekod(): Boolean = LocalAppTheme.current == AppTheme.TURBOBAYBEKOD
  */
 @Composable
 fun accentBrush(): Brush = if (isBaybekod()) {
-    Brush.linearGradient(BaybekodGradient)
+    BaybekodBrush
 } else {
     SolidColor(MaterialTheme.colorScheme.primary)
 }
@@ -75,6 +86,10 @@ fun accentBrush(): Brush = if (isBaybekod()) {
  */
 @Composable
 fun livingAccentBrush(): Brush {
+    // В бумажной теме переход не нужен — иначе анимация крутилась бы
+    // вхолостую, забирая кадры у интерфейса.
+    if (!isBaybekod()) return SolidColor(MaterialTheme.colorScheme.primary)
+
     val shift by rememberInfiniteTransition(label = "neon").animateFloat(
         initialValue = 0f,
         targetValue = 1f,
@@ -84,15 +99,11 @@ fun livingAccentBrush(): Brush {
         ),
         label = "shift",
     )
-    return if (isBaybekod()) {
-        Brush.linearGradient(
-            colors = BaybekodGradient,
-            start = Offset(shift * 1400f - 700f, 0f),
-            end = Offset(shift * 1400f + 700f, 900f),
-        )
-    } else {
-        SolidColor(MaterialTheme.colorScheme.primary)
-    }
+    return Brush.linearGradient(
+        colors = BaybekodGradient,
+        start = Offset(shift * 1400f - 700f, 0f),
+        end = Offset(shift * 1400f + 700f, 900f),
+    )
 }
 
 /**
@@ -125,7 +136,7 @@ fun gradientTextStyle(base: TextStyle): TextStyle = if (isBaybekod()) {
     // кистью, но не с обоими сразу. Цвет сбрасываем в Unspecified,
     // иначе он перебьёт кисть и градиента не будет видно.
     base.copy(color = Color.Unspecified)
-        .copy(brush = Brush.linearGradient(BaybekodGradient))
+        .copy(brush = BaybekodBrush)
 } else {
     base
 }
@@ -210,17 +221,23 @@ fun AccentProgress(
     modifier: Modifier = Modifier,
 ) {
     val safe = progress.coerceIn(0f, 1f)
+    val track = MaterialTheme.colorScheme.surfaceVariant
+    // Заливка рисуется кистью, а не вложенным Box'ом с `fillMaxWidth`:
+    // изменение ширины заставляло Compose перемерить и переразложить
+    // всю строку задачи — вместе с её текстом. Рисование ничего не
+    // трогает: меняется только картинка.
+    //
+    // И без «живого» градиента: бесконечная анимация на каждой
+    // качающейся строке гоняла перерисовку на 60 кадров в секунду.
+    val fill = accentBrush()
     Box(
-        modifier = modifier
-            .background(MaterialTheme.colorScheme.surfaceVariant),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(safe)
-                .fillMaxHeight()
-                .background(livingAccentBrush()),
-        )
-    }
+        modifier = modifier.drawBehind {
+            drawRect(color = track)
+            if (safe > 0f) {
+                drawRect(brush = fill, size = Size(size.width * safe, size.height))
+            }
+        },
+    )
 }
 
 /**
@@ -236,7 +253,10 @@ fun AccentDivider(modifier: Modifier = Modifier) {
             modifier = modifier
                 .fillMaxWidth()
                 .height(2.dp)
-                .background(livingAccentBrush()),
+                // Статичная кисть: разделитель рисуется после каждой
+                // строки очереди, и анимация на каждом из них съедала бы
+                // кадры интерфейса.
+                .background(accentBrush()),
         )
     } else {
         Box(

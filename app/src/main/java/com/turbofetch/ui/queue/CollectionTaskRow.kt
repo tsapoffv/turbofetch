@@ -1,21 +1,21 @@
 package com.turbofetch.ui.queue
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
@@ -27,10 +27,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,8 +64,11 @@ fun CollectionTaskRow(
     onDelete: () -> Unit,
 ) {
     val tracks = task.collectionTracks
-    val selectedCount = tracks.count { it.selected }
-    val covers = tracks.mapNotNull { it.thumbUrl }.distinct().take(3)
+    // Производные значения считаются один раз на набор треков: раньше
+    // они пересчитывались при каждой перерисовке карточки.
+    val selectedCount = remember(tracks) { tracks.count { it.selected } }
+    val covers = remember(tracks) { tracks.mapNotNull { it.thumbUrl }.distinct().take(3) }
+    val totalLabel = remember(tracks) { formatTotalDuration(tracks) }
 
     Column(
         modifier = Modifier
@@ -103,7 +109,7 @@ fun CollectionTaskRow(
                 // Длительность — отдельной строкой: в одной строке с числом
                 // треков она обрезалась бы («2 ч 44 …»).
                 Text(
-                    text = formatTotalDuration(tracks),
+                    text = totalLabel,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -189,83 +195,112 @@ private fun CollectionTrackList(
     tracks: List<CollectionTrack>,
     onToggle: (String) -> Unit,
 ) {
+    // Полоска рисуется, а не занимает место в разметке: `IntrinsicSize.Min`
+    // заставлял Compose измерять содержимое дважды.
+    val stripeBrush = accentBrush()
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(IntrinsicSize.Min),
+            .drawBehind {
+                drawRect(
+                    brush = stripeBrush,
+                    size = Size(3.dp.toPx(), size.height),
+                )
+            },
     ) {
-        Box(
+        Spacer(Modifier.width(15.dp))
+        // Список треков — ленивый: плейлист на сто треков это сто
+        // картинок и сто галочек, и в обычной колонке они все создавались
+        // разом. Высота ограничена, чтобы вложенный список не съедал
+        // весь экран.
+        LazyColumn(
             modifier = Modifier
-                .width(3.dp)
-                .fillMaxHeight()
-                .background(accentBrush()),
-        )
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            tracks.forEach { track ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { onToggle(track.id) }
-                        .padding(vertical = 2.dp),
-                ) {
-                    Checkbox(
-                        checked = track.selected,
-                        onCheckedChange = { onToggle(track.id) },
-                    )
-                    track.thumbUrl?.let { url ->
-                        AsyncImage(
-                            model = url,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(RoundedCornerShape(6.dp)),
-                        )
-                        Spacer(Modifier.width(10.dp))
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = track.title,
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            color = if (track.selected) {
-                                MaterialTheme.colorScheme.onSurface
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                        )
-                        if (track.artist.isNotBlank()) {
-                            Text(
-                                text = track.artist,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = formatDuration(track.durationSeconds),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                .weight(1f)
+                .heightIn(max = 320.dp),
+        ) {
+            items(tracks, key = { it.id }) { track ->
+                CollectionTrackItem(track = track, onToggle = onToggle)
             }
         }
     }
 }
 
-/** «3:33» */
+/** Одна строка списка треков. */
+@Composable
+private fun CollectionTrackItem(
+    track: CollectionTrack,
+    onToggle: (String) -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable { onToggle(track.id) }
+            .padding(vertical = 2.dp),
+    ) {
+        Checkbox(
+            checked = track.selected,
+            onCheckedChange = { onToggle(track.id) },
+        )
+        track.thumbUrl?.let { url ->
+            AsyncImage(
+                model = url,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(6.dp)),
+            )
+            Spacer(Modifier.width(10.dp))
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = track.title,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = if (track.selected) {
+                    MaterialTheme.colorScheme.onSurface
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+            if (track.artist.isNotBlank()) {
+                Text(
+                    text = track.artist,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = formatDuration(track.durationSeconds),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * «3:33».
+ *
+ * Строка собирается вручную: `String.format` создаёт `Formatter` и ходит
+ * в локаль на каждый вызов, а эта функция зовётся на каждый трек.
+ */
 private fun formatDuration(seconds: Int): String {
     if (seconds <= 0) return "—"
     val minutes = seconds / 60
     val rest = seconds % 60
-    return "%d:%02d".format(minutes, rest)
+    return buildString {
+        append(minutes)
+        append(':')
+        if (rest < 10) append('0')
+        append(rest)
+    }
 }
 
 /** «34 мин» для суммарной длительности. */
@@ -274,8 +309,8 @@ private fun formatTotalDuration(tracks: List<CollectionTrack>): String {
     if (total <= 0) return "—"
     val minutes = total / 60
     return if (minutes >= 60) {
-        "%d ч %d мин".format(minutes / 60, minutes % 60)
+        "${minutes / 60} ч ${minutes % 60} мин"
     } else {
-        "%d мин".format(minutes)
+        "$minutes мин"
     }
 }

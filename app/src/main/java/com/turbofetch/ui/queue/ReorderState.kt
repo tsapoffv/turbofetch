@@ -2,6 +2,7 @@ package com.turbofetch.ui.queue
 
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -19,6 +20,7 @@ import androidx.compose.ui.input.pointer.pointerInput
  * список поменять их местами. Смещение корректируем так, чтобы карточка
  * осталась под пальцем.
  */
+@Stable
 class ReorderState(
     private val listState: LazyListState,
     private val onMove: (from: Int, to: Int) -> Unit,

@@ -61,6 +61,10 @@ class HlsDownloader(
         outputFile.parentFile?.mkdirs()
         outputFile.delete()
 
+        // Один троттлинг на весь плейлист: иначе каждый сегмент начинал бы
+        // счёт заново и отдавал своё первое событие прогресса.
+        val throttle = ProgressThrottle()
+
         suspend fun append(url: String) = withTimeout(SEGMENT_TIMEOUT_MS) {
             val request = Request.Builder().url(url).build()
             client.newCall(request).execute().use { response ->
@@ -70,13 +74,16 @@ class HlsDownloader(
                 val body = response.body ?: error("Пустой ответ CDN")
                 body.byteStream().use { input ->
                     FileOutputStream(outputFile, true).use { output ->
-                        val buffer = ByteArray(64 * 1024)
+                        val buffer = ByteArray(256 * 1024)
                         while (true) {
                             val read = input.read(buffer)
                             if (read < 0) break
                             output.write(buffer, 0, read)
                             written += read
-                            collector.emit(DownloadProgress.Running(written, total.takeIf { it > 0 }))
+                            val size = total.takeIf { it > 0 }
+                            if (throttle.shouldEmit(written, size)) {
+                                collector.emit(DownloadProgress.Running(written, size))
+                            }
                         }
                     }
                 }

@@ -1,5 +1,6 @@
 package com.turbofetch.domain.model
 
+import androidx.compose.runtime.Immutable
 import kotlinx.serialization.Serializable
 
 /**
@@ -9,6 +10,7 @@ import kotlinx.serialization.Serializable
  * идентификатор: по нему трек потом ищется на YouTube.
  */
 @Serializable
+@Immutable
 data class CollectionTrack(
     /** Идентификатор трека на площадке (без префикса `spotify:track:`). */
     val id: String,

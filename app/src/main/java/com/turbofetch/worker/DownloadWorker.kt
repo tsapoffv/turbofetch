@@ -23,6 +23,7 @@ import com.turbofetch.domain.model.MediaFormat
 import com.turbofetch.domain.model.MediaNaming
 import com.turbofetch.domain.model.TaskStatus
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.sync.Semaphore
@@ -77,7 +78,7 @@ class DownloadWorker(
         val task = repository.get(taskId) ?: return Result.failure()
 
         com.turbofetch.core.Log.i("Воркер стартовал для задачи $taskId: ${task.url}")
-        setForeground(createForegroundInfo(task.displayTitle))
+        setForeground(createForegroundInfo(taskId, task.displayTitle))
         com.turbofetch.core.Log.i("Foreground-уведомление выставлено")
 
         // 1. Разбор ссылки, если метаданных нет или прямая ссылка протухла.
@@ -286,15 +287,30 @@ class DownloadWorker(
                 Result.retry()
             } else {
                 repository.updateStatus(taskId, TaskStatus.FAILED, error.message)
+                // Повторять не будем — недокачанный файл больше никому
+                // не нужен, и кэш приложения не должен расти от брошенных загрузок.
+                deleteTaskFiles(taskId)
                 Result.failure()
             }
         }
 
         // 3. Склейка видео и звука.
-        val mergedFile = if (audioFile != null) {
+        //
+        // Склейка и перекодирование — тяжёлая работа: они читают и пишут
+        // файлы и запускают ffmpeg, который занимает целое ядро. Поэтому
+        // они идут под отдельным семафором и на IO-потоке: раньше десяток
+        // задач мог одновременно запустить десяток ffmpeg, и главный поток
+        // интерфейса оставался без квантов.
+        parallelPostProcessing.acquire()
+        val mergedFile: File
+        val finalFile: File
+        try {
+        mergedFile = if (audioFile != null) {
             val merged = File(workDir, "$taskId.merged.mp4")
             try {
-                container.mediaMuxerMerger.merge(videoFile, audioFile, merged)
+                withContext(Dispatchers.IO) {
+                    container.mediaMuxerMerger.merge(videoFile, audioFile, merged)
+                }
             } catch (error: Exception) {
                 com.turbofetch.core.Log.e("Не удалось склеить", error)
                 repository.updateStatus(
@@ -313,7 +329,7 @@ class DownloadWorker(
         //
         // Для источника, который сам отдаёт звук (SoundCloud), файл уже
         // готов — m4a кладём как есть, без потери качества.
-        val finalFile = if (outputContainer == MediaNaming.Container.GIF) {
+        finalFile = if (outputContainer == MediaNaming.Container.GIF) {
             // Гифка из X: площадка отдала mp4-конверт, а юзеру нужна
             // настоящая анимация — перекодируем через ffmpeg.
             if (!container.ffmpegRunner.isAvailable) {
@@ -353,6 +369,13 @@ class DownloadWorker(
             mp3
         } else {
             mergedFile
+        }
+
+        } finally {
+            // Слот пост-обработки освобождается даже при ошибке: иначе
+            // после нескольких неудач семафор «залипнет» и новые задачи
+            // не смогут скачаться.
+            parallelPostProcessing.release()
         }
 
         // 5. Готовый файл — в галерею.
@@ -398,7 +421,7 @@ class DownloadWorker(
 
         // 5. Открыть файл, если так просил юзер.
         if (container.settingsRepository.current().openAfterDownload) {
-            openWhenReady(uri, mimeType, fileName)
+            openWhenReady(taskId, uri, mimeType, fileName)
         }
 
         return Result.success(workDataOf(KEY_OUTPUT_URI to uri))
@@ -490,7 +513,7 @@ class DownloadWorker(
      * Android всё равно не даст открыть activity из фонового сервиса, поэтому
      * показываем уведомление с кнопкой «Открыть».
      */
-    private fun openWhenReady(uri: String, mimeType: String, fileName: String) {
+    private fun openWhenReady(taskId: String, uri: String, mimeType: String, fileName: String) {
         val app = applicationContext as TurboFetchApp
         val intent = Intent(Intent.ACTION_VIEW)
             .setDataAndType(android.net.Uri.parse(uri), mimeType)
@@ -498,13 +521,13 @@ class DownloadWorker(
 
         if (app.isForeground) {
             runCatching { app.startActivity(intent) }
-                .onFailure { postReadyNotification(uri, mimeType, fileName) }
+                .onFailure { postReadyNotification(taskId, uri, mimeType, fileName) }
         } else {
-            postReadyNotification(uri, mimeType, fileName)
+            postReadyNotification(taskId, uri, mimeType, fileName)
         }
     }
 
-    private fun postReadyNotification(uri: String, mimeType: String, fileName: String) {
+    private fun postReadyNotification(taskId: String, uri: String, mimeType: String, fileName: String) {
         val intent = Intent(Intent.ACTION_VIEW)
             .setDataAndType(android.net.Uri.parse(uri), mimeType)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -525,11 +548,18 @@ class DownloadWorker(
 
         runCatching {
             androidx.core.app.NotificationManagerCompat.from(applicationContext)
-                .notify(READY_NOTIFICATION_ID, notification)
+                .notify(readyNotificationId(taskId), notification)
         }
     }
 
-    private fun createForegroundInfo(title: String): ForegroundInfo {
+    /**
+     * Уведомление о загрузке.
+     *
+     * ID — производный от задачи: у всех воркеров был один и тот же ID
+     * 4711, поэтому десяток одновременных загрузок затирали уведомления
+     * друг друга, а завершение одной снимало уведомление у остальных.
+     */
+    private fun createForegroundInfo(taskId: String, title: String): ForegroundInfo {
         val notification = NotificationCompat.Builder(applicationContext, TurboFetchApp.CHANNEL_DOWNLOADS)
             .setContentTitle("Скачивание")
             .setContentText(title)
@@ -539,10 +569,11 @@ class DownloadWorker(
             .setProgress(0, 0, true)
             .build()
 
+        val id = notificationId(taskId)
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            ForegroundInfo(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+            ForegroundInfo(id, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } else {
-            ForegroundInfo(NOTIFICATION_ID, notification)
+            ForegroundInfo(id, notification)
         }
     }
 
@@ -553,21 +584,40 @@ class DownloadWorker(
         if (format.height > 0) "${format.height}p" else format.label
 
     /**
+     * Удаляет все промежуточные файлы задачи.
+     *
+     * Их названия — «$taskId.mp4», «$taskId.m4a», «$taskId.audio» и
+     * так далее, поэтому файлы ищутся по префиксу.
+     */
+    private fun deleteTaskFiles(taskId: String) {
+        val downloads = File(applicationContext.cacheDir, "downloads")
+        val files = downloads.listFiles { file -> file.name.startsWith("$taskId.") }
+            ?: return
+        for (file in files) {
+            if (file.delete()) {
+                com.turbofetch.core.Log.i("Удалил промежуточный ${file.name}")
+            }
+        }
+    }
+
+    /**
      * Удаляет недокачанные файлы, если после повторного разбора ссылки
      * площадка отдала другой поток. Иначе байты старого потока допишутся к
      * новому и получится битый файл.
      */
     private fun dropStalePartials(taskId: String, videoChanged: Boolean, audioChanged: Boolean) {
         if (!videoChanged && !audioChanged) return
+        // Удаляем всё, что принадлежит задаче: промежуточные файлы
+        // называются «$taskId.mp4», «$taskId.m4a», «$taskId.audio» и так
+        // далее. Раньше здесь искался файл «$taskId.video», которого не
+        // бывает, — недокачанный поток оставался на диске, и при следующей
+        // попытке докачка дописывала байты старого потока к новому.
         val downloads = File(applicationContext.cacheDir, "downloads")
-        val names = buildList {
-            if (videoChanged) add("$taskId.video")
-            if (audioChanged) add("$taskId.audio")
-        }
-        for (name in names) {
-            val stale = File(downloads, name)
-            if (stale.exists() && stale.delete()) {
-                com.turbofetch.core.Log.w("Поток сменился, удалил недокачанный ${stale.name}")
+        val stale = downloads.listFiles { file -> file.name.startsWith("$taskId.") }
+            ?: return
+        for (file in stale) {
+            if (file.delete()) {
+                com.turbofetch.core.Log.w("Поток сменился, удалил недокачанный ${file.name}")
             }
         }
     }
@@ -575,16 +625,39 @@ class DownloadWorker(
     companion object {
         const val KEY_TASK_ID = "task_id"
         const val KEY_OUTPUT_URI = "output_uri"
-        private const val NOTIFICATION_ID = 4711
-        private const val READY_NOTIFICATION_ID = 4712
+        /** База ID уведомлений: дальше добавляется хэш задачи. */
+        private const val NOTIFICATION_ID_BASE = 4711
+        private const val READY_NOTIFICATION_ID_BASE = 5711
 
         /** Сколько загрузок может идти одновременно. */
         const val MAX_PARALLEL_DOWNLOADS = 3
+
+        /**
+         * Сколько задач одновременно могут проходить пост-обработку:
+         * склейку видео со звуком, перекодирование в mp3 или GIF.
+         *
+         * Это работа на полную мощность процессора: ffmpeg занимает целое
+         * ядро и сотни мегабайт памяти. Без ограничения десяток задач,
+         * дошедших до конца одновременно, запускали десяток ffmpeg — и
+         * интерфейс залипал, потому что главному потоку не доставалось
+         * квантов.
+         */
+        const val MAX_PARALLEL_POST_PROCESSING = 2
 
         /**
          * Семафор общий для всех воркеров в процессе — иначе каждый экземпляр
          * ограничил бы себя отдельно и лимит не работал бы.
          */
         private val parallelDownloads = Semaphore(MAX_PARALLEL_DOWNLOADS)
+
+        /** Семафор пост-обработки — тоже общий на процесс. */
+        private val parallelPostProcessing = Semaphore(MAX_PARALLEL_POST_PROCESSING)
+
+        /** Свой ID уведомления на каждую задачу. */
+        private fun notificationId(taskId: String): Int =
+            NOTIFICATION_ID_BASE + (taskId.hashCode() and 0x0FFF)
+
+        private fun readyNotificationId(taskId: String): Int =
+            READY_NOTIFICATION_ID_BASE + (taskId.hashCode() and 0x0FFF)
     }
 }

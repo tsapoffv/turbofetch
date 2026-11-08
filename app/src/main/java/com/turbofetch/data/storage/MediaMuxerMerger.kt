@@ -92,12 +92,23 @@ class MediaMuxerMerger {
         muxTrack: Int,
     ) {
         extractor.selectTrack(trackIndex)
-        val buffer = ByteBuffer.allocate(MAX_SAMPLE_SIZE)
+        // Буфер не фиксированного размера: изначально небольшой, а если
+        // попался крупный сэмпл — перерастает под него. Раньше на каждую
+        // дорожку выделялось по 12 МБ прямой памяти, и десяток одновременных
+        // склеек мог исчерпать лимит кучи процесса.
+        var buffer = ByteBuffer.allocate(INITIAL_SAMPLE_SIZE)
         val info = MediaCodec.BufferInfo()
 
         while (true) {
-            val size = extractor.readSampleData(buffer, 0)
+            var size = extractor.readSampleData(buffer, 0)
             if (size < 0) break
+
+            // Сэмпл не влез — перерастаем буфер и читаем заново.
+            if (size > buffer.capacity()) {
+                buffer = ByteBuffer.allocate(size)
+                size = extractor.readSampleData(buffer, 0)
+                if (size < 0) break
+            }
 
             info.offset = 0
             info.size = size
@@ -111,7 +122,7 @@ class MediaMuxerMerger {
     }
 
     private companion object {
-        /** Запас на размер сэмпла: 4K-кадр в худшем случае около 10 МБ. */
-        const val MAX_SAMPLE_SIZE = 12 * 1024 * 1024
+        /** Сэмпл обычно меньше мегабайта — столько и заказываем сразу. */
+        const val INITIAL_SAMPLE_SIZE = 1024 * 1024
     }
 }

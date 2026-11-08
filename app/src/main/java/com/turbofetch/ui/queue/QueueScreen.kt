@@ -5,12 +5,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -28,9 +26,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -44,6 +40,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -115,7 +113,15 @@ fun QueueScreen(
                         bottom = 112.dp,
                     ),
                 ) {
-                    itemsIndexed(tasks, key = { _, task -> task.id }) { index, task ->
+                    itemsIndexed(
+                        tasks,
+                        key = { _, task -> task.id },
+                        // В списке два структурно разных элемента: обычная
+                        // задача и карточка коллекции. Без contentType слот
+                        // композиции может быть переиспользован под другой
+                        // тип — и лишние перерисовки.
+                        contentType = { _, task -> if (task.isCollection) "collection" else "task" },
+                    ) { index, task ->
                         val dragging = reorderState.draggingItemIndex == index
                         if (task.isCollection) {
                             CollectionTaskRow(
@@ -146,22 +152,36 @@ fun QueueScreen(
                             AccentDivider()
                             return@itemsIndexed
                         }
+                        // Слой перетаскивания запоминается: новая лямбда
+                        // graphicsLayer на каждой перерисовке заставляла
+                        // Compose пересоздавать слой и заново мерить строку.
+                        // Внутри блока состояние читается как обычно — блок
+                        // сам перезапускается на фазе отрисовки.
+                        val dragLayer = remember(dragging) {
+                            Modifier.graphicsLayer {
+                                if (dragging) {
+                                    translationY = reorderState.dragOffset
+                                    shadowElevation = 16.dp.toPx()
+                                }
+                            }
+                        }
+                        // Ручка перетаскивания запоминается: её модификатор
+                        // иначе создавался заново на каждой перерисовке, и
+                        // строка переставала быть пропускаемой.
+                        val dragHandle = remember(reorderState, index) {
+                            Modifier.dragHandle(reorderState, index)
+                        }
                         TaskRow(
                             task = task,
                             dragging = dragging,
                             modifier = Modifier
                                 .zIndex(if (dragging) 1f else 0f)
-                                .graphicsLayer {
-                                    if (dragging) {
-                                        translationY = reorderState.dragOffset
-                                        shadowElevation = 16.dp.toPx()
-                                    }
-                                }
+                                .then(dragLayer)
                                 // Перетаскиваемую строку анимировать нельзя:
                                 // её позиция и так задаётся сдвигом, а animateItem
                                 // двигал бы её второй раз — строка «дёргалась».
                                 .then(if (dragging) Modifier else Modifier.animateItem()),
-                            dragHandleModifier = Modifier.dragHandle(reorderState, index),
+                            dragHandleModifier = dragHandle,
                             onClick = { editing = task },
                             onDownload = { viewModel.download(task.id) },
                             onCancel = { viewModel.cancel(task.id) },
@@ -393,19 +413,29 @@ private fun TaskRow(
 ) {
     // Трек из альбома или плейлиста отодвинут вправо и отделён полоской:
     // видно, что он часть коллекции, а не самостоятельная закачка.
+    //
+    // Полоска рисуется, а не занимает место в разметке: `IntrinsicSize.Min`
+    // заставлял Compose измерять содержимое строки дважды, а текст в
+    // Compose измеряется дороже всего остального.
+    val stripeBrush = accentBrush()
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(IntrinsicSize.Min),
+            .then(
+                if (task.isNested) {
+                    Modifier.drawBehind {
+                        drawRect(
+                            brush = stripeBrush,
+                            size = Size(3.dp.toPx(), size.height),
+                        )
+                    }
+                } else {
+                    Modifier
+                },
+            ),
     ) {
         if (task.isNested) {
-            Box(
-                modifier = Modifier
-                    .width(3.dp)
-                    .fillMaxHeight()
-                    .background(accentBrush()),
-            )
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(15.dp))
         }
         Column(
             modifier = Modifier
@@ -456,8 +486,10 @@ private fun TaskRow(
                         modifier = Modifier.size(14.dp),
                     )
                     Spacer(Modifier.width(4.dp))
-                    Text(
-                        text = buildString {
+                    // Подпись собирается один раз на задачу: раньше строка
+                    // пересобиралась заново при каждой перерисовке.
+                    val subtitle = remember(task.source, task.selectedFormat, task.audioOnly) {
+                        buildString {
                             append(task.source.label())
                             task.selectedFormat?.let { format ->
                                 append(" · ${format.label}")
@@ -468,7 +500,10 @@ private fun TaskRow(
                                 }
                             }
                             if (task.audioOnly) append(" · mp3")
-                        },
+                        }
+                    }
+                    Text(
+                        text = subtitle,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -514,7 +549,7 @@ private fun TaskRow(
                     TextButton2("Отменить", onCancel)
                     if (task.status == TaskStatus.RUNNING) {
                         Text(
-                            "${(task.progress * 100).toInt()} %",
+                            text = "${(task.progress * 100).toInt()} %",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
