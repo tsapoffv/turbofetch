@@ -65,7 +65,14 @@ fun TaskEditSheet(
     // Источник без видео (SoundCloud): площадка сама отдаёт звук, и мы
     // сохраняем его как есть — m4a. mp3 появляется только по запросу.
     val isAudioSource = MediaNaming.isAudioOnlySource(task.availableFormats)
-    val container = MediaNaming.container(task.availableFormats, audioOnly)
+    // Контейнер считаем по выбранному прямо сейчас чипу, а не по сохранённому
+    // формату: иначе переключили на «GIF (анимация)» — а в предпросмотре
+    // всё ещё mp4, и имя вводит в заблуждение.
+    val container = MediaNaming.container(
+        formats = task.availableFormats,
+        wantMp3 = audioOnly,
+        selected = selectedFormat ?: task.selectedFormat,
+    )
 
     val previewName = FileNameTemplate.render(
         template = template,
@@ -75,6 +82,8 @@ fun TaskEditSheet(
         // («160 кбит/с») — так же, как считает воркер. Слово «audio» остаётся
         // для YouTube, где звук вытаскивается из видео.
         quality = when {
+            // Гифка: «Трек_GIF.gif» — короче и понятнее, чем «GIF (анимация)».
+            container == MediaNaming.Container.GIF -> "GIF"
             isAudioSource -> task.availableFormats.firstOrNull()?.label
                 .orEmpty()
                 .removePrefix("аудио ")

@@ -164,6 +164,19 @@ class DownloadWorker(
         // Что качаем первым файлом.
         val primaryFormat = audioOnlyFormat ?: videoFormat
 
+        // Контейнер выбирается по правилам MediaNaming: площадка, которая
+        // сама отдаёт звук (SoundCloud), сохраняется как есть — m4a;
+        // mp3 появляется только когда юзер явно попросил только аудио;
+        // GIF — когда выбран формат с пометкой TO_GIF.
+        //
+        // Считаем его здесь, до имени: от контейнера зависит и расширение,
+        // и токен качества («GIF» вместо «GIF (анимация)»).
+        val outputContainer = MediaNaming.container(
+            formats = current.availableFormats,
+            wantMp3 = wantsAudioOnly,
+            selected = videoFormat,
+        )
+
         // Токен качества для имени файла.
         //
         // У площадок, которые отдают только звук (SoundCloud), в имени
@@ -172,6 +185,8 @@ class DownloadWorker(
         // вытаскивается из видеопотока, слово «audio» остаётся — там своего
         // аудиопотока с подписью нет.
         val qualityToken = when {
+            // Гифка: в имени достаточно слова «GIF», а не «GIF (анимация)».
+            outputContainer == MediaNaming.Container.GIF -> "GIF"
             MediaNaming.isAudioOnlySource(current.availableFormats) ->
                 // У YouTube подпись аудиопотока начинается со слова «аудио» —
                 // в имени оно лишнее: «Трек_130 кбит_с.m4a» читается лучше.
@@ -196,12 +211,12 @@ class DownloadWorker(
         )
 
         // 2. Имена файлов.
-        //
-        // Контейнер выбирается по правилам MediaNaming: площадка, которая
-        // сама отдаёт звук (SoundCloud), сохраняется как есть — m4a;
-        // mp3 появляется только когда юзер явно попросил только аудио.
-        val outputContainer = MediaNaming.container(current.availableFormats, wantsAudioOnly)
-        val extension = if (needsSeparateAudio) "mp4" else MediaNaming.extension(outputContainer)
+        val extension = when {
+            // Гифка: площадка отдала mp4-конверт, а сохраняем мы GIF.
+            outputContainer == MediaNaming.Container.GIF -> "gif"
+            needsSeparateAudio -> "mp4"
+            else -> MediaNaming.extension(outputContainer)
+        }
         // Своё имя из шторки редактирования важнее шаблона: пользователь ввёл
         // его руками. Если его нет — собираем имя по шаблону настроек.
         val fileName = current.customName?.takeIf { it.isNotBlank() }
@@ -298,7 +313,27 @@ class DownloadWorker(
         //
         // Для источника, который сам отдаёт звук (SoundCloud), файл уже
         // готов — m4a кладём как есть, без потери качества.
-        val finalFile = if (outputContainer == MediaNaming.Container.MP3) {
+        val finalFile = if (outputContainer == MediaNaming.Container.GIF) {
+            // Гифка из X: площадка отдала mp4-конверт, а юзеру нужна
+            // настоящая анимация — перекодируем через ffmpeg.
+            if (!container.ffmpegRunner.isAvailable) {
+                repository.updateStatus(
+                    taskId,
+                    TaskStatus.FAILED,
+                    "GIF на этом устройстве недоступен: ffmpeg собран только под " +
+                        "arm64. Оставьте MP4 без звука — он играется везде.",
+                )
+                return Result.failure()
+            }
+            val gif = File(workDir, "$taskId.gif")
+            val conversion = container.ffmpegRunner.convertToGif(mergedFile, gif)
+            if (conversion.isFailure) {
+                val reason = conversion.exceptionOrNull()?.message ?: "неизвестная ошибка"
+                repository.updateStatus(taskId, TaskStatus.FAILED, "Не удалось сделать GIF: $reason")
+                return Result.failure()
+            }
+            gif
+        } else if (outputContainer == MediaNaming.Container.MP3) {
             if (!container.ffmpegRunner.isAvailable) {
                 repository.updateStatus(
                     taskId,
@@ -327,6 +362,7 @@ class DownloadWorker(
             displayName = fileName,
             mimeType = mimeType,
             isAudio = MediaNaming.isAudio(outputContainer),
+            isImage = MediaNaming.isImage(outputContainer),
         )
         repository.updateOutput(taskId, uri)
 

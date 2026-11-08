@@ -1,5 +1,7 @@
 package com.turbofetch.domain.model
 
+import com.turbofetch.domain.model.MediaFormat
+import com.turbofetch.domain.model.PostProcess
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -71,5 +73,40 @@ class MediaNamingTest {
         assertEquals(MediaNaming.Container.VIDEO, container)
         assertEquals("mp4", MediaNaming.extension(container))
         assertFalse(MediaNaming.isAudio(container))
+    }
+
+    @Test
+    fun `гифка сохраняется как gif`() {
+        val gif = MediaFormat(
+            id = "gif",
+            label = "GIF (анимация)",
+            mimeType = "image/gif",
+            hasVideo = true,
+            hasAudio = false,
+            postProcess = PostProcess.TO_GIF,
+        )
+        val mp4 = MediaFormat(id = "mp4", label = "MP4 без звука", mimeType = "video/mp4")
+
+        assertEquals(
+            MediaNaming.Container.GIF,
+            MediaNaming.container(listOf(gif, mp4), wantMp3 = false, selected = gif),
+        )
+        assertEquals(
+            MediaNaming.Container.VIDEO,
+            MediaNaming.container(listOf(gif, mp4), wantMp3 = false, selected = mp4),
+        )
+        assertEquals("gif", MediaNaming.extension(MediaNaming.Container.GIF))
+        assertEquals("image/gif", MediaNaming.mimeType(MediaNaming.Container.GIF))
+        assertTrue(MediaNaming.isImage(MediaNaming.Container.GIF))
+        assertTrue(!MediaNaming.isAudio(MediaNaming.Container.GIF))
+    }
+
+    @Test
+    fun `mp4 гифки не считается аудио`() {
+        val formats = listOf(
+            MediaFormat(id = "gif", label = "GIF", mimeType = "image/gif", postProcess = PostProcess.TO_GIF),
+            MediaFormat(id = "mp4", label = "MP4", mimeType = "video/mp4"),
+        )
+        assertTrue(!MediaNaming.isAudioOnlySource(formats))
     }
 }

@@ -4,6 +4,7 @@ import com.turbofetch.data.remote.HttpClientFactory
 import com.turbofetch.domain.link.LinkParser
 import com.turbofetch.domain.model.MediaFormat
 import com.turbofetch.domain.model.MediaInfo
+import com.turbofetch.domain.model.PostProcess
 import com.turbofetch.domain.model.Source
 import com.turbofetch.domain.resolver.VideoResolver
 import kotlinx.coroutines.Dispatchers
@@ -63,16 +64,29 @@ class XResolver(
         }
 
         val mediaDetails = json["mediaDetails"]?.jsonArray.orEmpty()
+        val mediaEntry = mediaDetails.firstOrNull()?.jsonObject
         val videoEntry = mediaDetails
             .mapNotNull { it.jsonObject["video_info"]?.jsonObject }
             .firstOrNull()
             ?: error("В твите нет видео")
 
+        // GIF-пост: площадка отдаёт анимацию mp4-конвертом, и брать её
+        // «как есть» — значит отдать файл, который половина плееров не
+        // показывает. Поэтому предлагаем два варианта: настоящий GIF
+        // (через ffmpeg) и mp4 без звука.
+        val isGif = mediaEntry?.get("type")?.jsonPrimitive?.contentOrNullSafe() == "animated_gif"
+
         val variants = videoEntry["variants"]?.jsonArray.orEmpty()
         val allFormats = variants.mapNotNull { variant ->
             val obj = variant.jsonObject
             val link = obj["url"]?.jsonPrimitive?.contentOrNullSafe() ?: return@mapNotNull null
-            val contentType = obj["contentType"]?.jsonPrimitive?.contentOrNullSafe().orEmpty()
+            // Ключ названия потока в ответе X — `content_type`. Раньше читался
+            // `contentType`, которого в JSON нет, и MIME-тип всегда был
+            // «video/mp4» по умолчанию.
+            val contentType = (
+                obj["content_type"]?.jsonPrimitive?.contentOrNullSafe()
+                    ?: obj["contentType"]?.jsonPrimitive?.contentOrNullSafe()
+                ).orEmpty()
             val bitrate = obj["bitrate"]?.jsonPrimitive?.intOrNullSafe() ?: 0
 
             val isHls = contentType.contains("mpegURL")
@@ -100,6 +114,28 @@ class XResolver(
             error("В твите нет вариантов видео")
         }
 
+        // Для GIF-поста добавляем вариант с настоящей анимацией: mp4-конверт
+        // перекодируется в GIF через ffmpeg.
+        val withGif = if (isGif) {
+            val source = formats.first()
+            listOf(
+                source.copy(
+                    id = "gif",
+                    label = "GIF (анимация)",
+                    mimeType = "image/gif",
+                    bitrate = 0,
+                    postProcess = PostProcess.TO_GIF,
+                ),
+                source.copy(
+                    id = "mp4",
+                    label = "MP4 без звука",
+                    mimeType = "video/mp4",
+                ),
+            )
+        } else {
+            formats
+        }
+
         val text = json["text"]?.jsonPrimitive?.contentOrNullSafe().orEmpty()
         val author = json["user"]?.jsonObject
             ?.get("name")
@@ -114,7 +150,7 @@ class XResolver(
             author = author,
             durationSeconds = null,
             thumbnailUrl = thumbnail,
-            formats = formats,
+            formats = withGif,
         )
     }
 
