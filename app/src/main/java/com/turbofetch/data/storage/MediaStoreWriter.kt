@@ -24,11 +24,12 @@ class MediaStoreWriter(private val context: Context) {
         displayName: String,
         mimeType: String,
         isAudio: Boolean,
+        isImage: Boolean = false,
     ): String = withContext(Dispatchers.IO) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            saveViaMediaStore(source, displayName, mimeType, isAudio)
+            saveViaMediaStore(source, displayName, mimeType, isAudio, isImage)
         } else {
-            saveViaLegacyFile(source, displayName, isAudio)
+            saveViaLegacyFile(source, displayName, isAudio, isImage)
         }
     }
 
@@ -37,17 +38,18 @@ class MediaStoreWriter(private val context: Context) {
         displayName: String,
         mimeType: String,
         isAudio: Boolean,
+        isImage: Boolean,
     ): String {
         val resolver = context.contentResolver
-        val collection = if (isAudio) {
-            MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-        } else {
-            MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        val collection = when {
+            isImage -> MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            isAudio -> MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            else -> MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         }
-        val relativePath = if (isAudio) {
-            "${Environment.DIRECTORY_MUSIC}/TurboFetch"
-        } else {
-            "${Environment.DIRECTORY_MOVIES}/TurboFetch"
+        val relativePath = when {
+            isImage -> "${Environment.DIRECTORY_PICTURES}/TurboFetch"
+            isAudio -> "${Environment.DIRECTORY_MUSIC}/TurboFetch"
+            else -> "${Environment.DIRECTORY_MOVIES}/TurboFetch"
         }
 
         val values = ContentValues().apply {
@@ -122,8 +124,17 @@ class MediaStoreWriter(private val context: Context) {
         }
     }
 
-    private fun saveViaLegacyFile(source: File, displayName: String, isAudio: Boolean): String {
-        val baseDir = if (isAudio) Environment.DIRECTORY_MUSIC else Environment.DIRECTORY_MOVIES
+    private fun saveViaLegacyFile(
+        source: File,
+        displayName: String,
+        isAudio: Boolean,
+        isImage: Boolean,
+    ): String {
+        val baseDir = when {
+            isImage -> Environment.DIRECTORY_PICTURES
+            isAudio -> Environment.DIRECTORY_MUSIC
+            else -> Environment.DIRECTORY_MOVIES
+        }
         val dir = File(
             Environment.getExternalStoragePublicDirectory(baseDir),
             "TurboFetch",

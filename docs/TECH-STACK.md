@@ -148,7 +148,7 @@ DI — ручной, без Hilt: `core/di/AppContainer`. Проект мале�
 | `data/resolver/instagram` | резолвер Instagram | `InstagramResolver`, `InstagramCrawler`, `InstagramShortcode` |
 | `data/resolver/soundcloud` | резолвер SoundCloud | `SoundCloudResolver`, `SoundCloudClientId` |
 | `data/resolver/spotify` | резолвер Spotify | `SpotifyResolver`, `SpotifyMetadata`, `TrackMatcher` |
-| `data/media` | ffmpeg | `FfmpegRunner` |
+| `data/media` | ffmpeg | `FfmpegRunner`, `GifFilter` |
 | `data/storage` | запись результата | `MediaStoreWriter`, `MediaMuxerMerger` |
 | `data/repo` | репозитории | `TaskRepository`, `FileRepository`, `SettingsRepository` |
 | `worker` | фон | `DownloadWorker`, `DownloadScheduler` |
@@ -254,7 +254,8 @@ mime, наличие видео/звука, размер, **прямая ссы�
 6. **Склейка** — если скачаны видео и аудио отдельно, `MediaMuxerMerger.merge()`
    собирает один MP4.
 7. **mp3** — если нужен только звук в mp3, `FfmpegRunner.convertToMp3()`
-   перекодирует.
+   перекодирует. Для гифки из X вместо этого `convertToGif()` (фильтр-граф
+   собирает `GifFilter`).
 8. **Запись в хранилище** — `MediaStoreWriter.save()`.
 9. **Финал** — статус `COMPLETED`, `outputUri` в задаче, уведомление, при
    желании автооткрытие файла плеером. Важная деталь: после успешной записи
@@ -355,6 +356,33 @@ TikTok отдаёт готовые данные именно мобильным 
 
 Ответ может быть `mp4` или HLS (`mpegURL` в content-type) — это видно в коде
 парсинга.
+
+Ключ MIME-типа потока в ответе — `content_type` (с подчёркиванием). Раньше
+читался `contentType`, которого в JSON нет: тип всегда считался пустым, и
+фильтр HLS молча не срабатывал.
+
+**Гифки.** Пост с `mediaDetails[].type == "animated_gif"` отдаёт анимацию
+обычным mp4 — такой файл половина плееров не показывает. Поэтому для таких
+постов добавляются два варианта:
+
+| Вариант | Что это |
+|---|---|
+| `GIF (анимация)` | mp4 перекодируется в настоящий GIF (`FfmpegRunner.convertToGif`) |
+| `MP4 без звука` | исходный mp4 как есть — без перекодирования |
+
+Перекодирование: кадр ужимается до 480 px, частота ограничивается 15 кадрами
+в секунду, цвета сводятся к палитре в 128 цветов (`palettegen` + `paletteuse`).
+Цепочка фильтров собрана в `data/media/GifFilter` — чистой функцией, её
+правила покрыты тестом.
+
+Две тонкости, из-за которых гифка получалась «неправильной»:
+
+- **Отбор кадров — по времени, а не по номеру.** `select` пропускает кадр,
+  если с предыдущего выбранного прошло меньше порога. Отбор по номеру
+  (`mod(n\,2)`) вместе с `setpts=N/(fps*TB)` переписывал метки времени, и
+  анимация игралась вдвое быстрее исходника.
+- **Порог 1/(fps + 2), а не 1/fps.** У исходника с 15 fps кадры идут через
+  0,0667 с, и при точном пороге часть кадров терялась бы из-за округления.
 
 Слой X самый хрупкий: эндпоинт не документирован и может измениться.
 

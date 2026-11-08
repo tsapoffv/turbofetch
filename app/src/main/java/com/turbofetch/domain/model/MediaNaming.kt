@@ -25,6 +25,9 @@ object MediaNaming {
 
         /** Звук mp3 — результат конвертации через ffmpeg. */
         MP3,
+
+        /** Анимированный GIF — результат конвертации гифки через ffmpeg. */
+        GIF,
     }
 
     /**
@@ -40,9 +43,20 @@ object MediaNaming {
      * Контейнер по умолчанию для набора форматов.
      *
      * @param wantMp3 юзер явно попросил только аудио — тогда mp3.
+     * @param selected формат, который юзер выбрал. Он важнее списка: у
+     *   гифки из X два варианта (GIF и mp4 без звука), и контейнер зависит
+     *   от того, какой выбран.
      */
-    fun container(formats: List<MediaFormat>, wantMp3: Boolean): Container = when {
+    fun container(
+        formats: List<MediaFormat>,
+        wantMp3: Boolean,
+        selected: MediaFormat? = null,
+    ): Container = when {
         wantMp3 -> Container.MP3
+        // Выбранный формат с пометкой «перекодировать в GIF» — это гифка,
+        // даже если площадка отдала её mp4-конвертом.
+        selected?.postProcess == PostProcess.TO_GIF -> Container.GIF
+        selected?.mimeType == "image/gif" -> Container.GIF
         isAudioOnlySource(formats) -> Container.M4A
         else -> Container.VIDEO
     }
@@ -52,6 +66,7 @@ object MediaNaming {
         Container.VIDEO -> "mp4"
         Container.M4A -> "m4a"
         Container.MP3 -> "mp3"
+        Container.GIF -> "gif"
     }
 
     /** MIME-тип для MediaStore. */
@@ -59,8 +74,13 @@ object MediaNaming {
         Container.VIDEO -> sourceMimeType.takeIf { it.isNotBlank() } ?: "video/mp4"
         Container.M4A -> "audio/mp4"
         Container.MP3 -> "audio/mpeg"
+        Container.GIF -> "image/gif"
     }
 
     /** Файл уходит в папку «Музыка», а не «Видео». */
-    fun isAudio(container: Container): Boolean = container != Container.VIDEO
+    fun isAudio(container: Container): Boolean =
+        container == Container.M4A || container == Container.MP3
+
+    /** Файл — картинка: уходит в «Фото», а не в «Видео». */
+    fun isImage(container: Container): Boolean = container == Container.GIF
 }

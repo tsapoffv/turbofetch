@@ -21,6 +21,23 @@ enum class FormatKind {
     HLS_PLAYLIST,
 }
 
+/**
+ * Что сделать с файлом после скачивания.
+ *
+ * Нужен для гифок: площадка отдаёт анимацию обычным mp4, и брать её «как
+ * есть» — значит отдать пользователю файл, который половина плееров не
+ * показывает. Поэтому предлагаем два варианта: настоящий GIF и mp4 без
+ * звука.
+ */
+@Serializable
+enum class PostProcess {
+    /** Ничего: файл сохраняется как скачан. */
+    NONE,
+
+    /** Перекодировать в анимированный GIF через ffmpeg. */
+    TO_GIF,
+}
+
 @Serializable
 data class MediaFormat(
     val id: String,
@@ -40,6 +57,8 @@ data class MediaFormat(
     val headers: Map<String, String> = emptyMap(),
     /** Что лежит по ссылке: файл или плейлист. */
     val kind: FormatKind = FormatKind.FILE,
+    /** Что сделать с файлом после скачивания. */
+    val postProcess: PostProcess = PostProcess.NONE,
 ) {
     val isAudioOnly: Boolean get() = hasAudio && !hasVideo
 }
