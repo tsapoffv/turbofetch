@@ -305,71 +305,71 @@ class DownloadWorker(
         val mergedFile: File
         val finalFile: File
         try {
-        mergedFile = if (audioFile != null) {
-            val merged = File(workDir, "$taskId.merged.mp4")
-            try {
-                withContext(Dispatchers.IO) {
-                    container.mediaMuxerMerger.merge(videoFile, audioFile, merged)
+            mergedFile = if (audioFile != null) {
+                val merged = File(workDir, "$taskId.merged.mp4")
+                try {
+                    withContext(Dispatchers.IO) {
+                        container.mediaMuxerMerger.merge(videoFile, audioFile, merged)
+                    }
+                } catch (error: Exception) {
+                    com.turbofetch.core.Log.e("Не удалось склеить", error)
+                    repository.updateStatus(
+                        taskId,
+                        TaskStatus.FAILED,
+                        "Не удалось склеить видео со звуком: ${error.message}",
+                    )
+                    return Result.failure()
                 }
-            } catch (error: Exception) {
-                com.turbofetch.core.Log.e("Не удалось склеить", error)
-                repository.updateStatus(
-                    taskId,
-                    TaskStatus.FAILED,
-                    "Не удалось склеить видео со звуком: ${error.message}",
-                )
-                return Result.failure()
+                merged
+            } else {
+                videoFile
             }
-            merged
-        } else {
-            videoFile
-        }
 
-        // 4. Если просили только аудио — перекодируем в mp3.
-        //
-        // Для источника, который сам отдаёт звук (SoundCloud), файл уже
-        // готов — m4a кладём как есть, без потери качества.
-        finalFile = if (outputContainer == MediaNaming.Container.GIF) {
-            // Гифка из X: площадка отдала mp4-конверт, а юзеру нужна
-            // настоящая анимация — перекодируем через ffmpeg.
-            if (!container.ffmpegRunner.isAvailable) {
-                repository.updateStatus(
-                    taskId,
-                    TaskStatus.FAILED,
-                    "GIF на этом устройстве недоступен: ffmpeg собран только под " +
-                        "arm64. Оставьте MP4 без звука — он играется везде.",
-                )
-                return Result.failure()
+            // 4. Если просили только аудио — перекодируем в mp3.
+            //
+            // Для источника, который сам отдаёт звук (SoundCloud), файл уже
+            // готов — m4a кладём как есть, без потери качества.
+            finalFile = if (outputContainer == MediaNaming.Container.GIF) {
+                // Гифка из X: площадка отдала mp4-конверт, а юзеру нужна
+                // настоящая анимация — перекодируем через ffmpeg.
+                if (!container.ffmpegRunner.isAvailable) {
+                    repository.updateStatus(
+                        taskId,
+                        TaskStatus.FAILED,
+                        "GIF на этом устройстве недоступен: ffmpeg собран только под " +
+                            "arm64. Оставьте MP4 без звука — он играется везде.",
+                    )
+                    return Result.failure()
+                }
+                val gif = File(workDir, "$taskId.gif")
+                val conversion = container.ffmpegRunner.convertToGif(mergedFile, gif)
+                if (conversion.isFailure) {
+                    val reason = conversion.exceptionOrNull()?.message ?: "неизвестная ошибка"
+                    repository.updateStatus(taskId, TaskStatus.FAILED, "Не удалось сделать GIF: $reason")
+                    return Result.failure()
+                }
+                gif
+            } else if (outputContainer == MediaNaming.Container.MP3) {
+                if (!container.ffmpegRunner.isAvailable) {
+                    repository.updateStatus(
+                        taskId,
+                        TaskStatus.FAILED,
+                        "mp3 на этом устройстве недоступен: ffmpeg собран только под " +
+                            "arm64. Оставьте M4A — он играется везде.",
+                    )
+                    return Result.failure()
+                }
+                val mp3 = File(workDir, "$taskId.mp3")
+                val conversion = container.ffmpegRunner.convertToMp3(mergedFile, mp3)
+                if (conversion.isFailure) {
+                    val reason = conversion.exceptionOrNull()?.message ?: "неизвестная ошибка"
+                    repository.updateStatus(taskId, TaskStatus.FAILED, "Не удалось сделать mp3: $reason")
+                    return Result.failure()
+                }
+                mp3
+            } else {
+                mergedFile
             }
-            val gif = File(workDir, "$taskId.gif")
-            val conversion = container.ffmpegRunner.convertToGif(mergedFile, gif)
-            if (conversion.isFailure) {
-                val reason = conversion.exceptionOrNull()?.message ?: "неизвестная ошибка"
-                repository.updateStatus(taskId, TaskStatus.FAILED, "Не удалось сделать GIF: $reason")
-                return Result.failure()
-            }
-            gif
-        } else if (outputContainer == MediaNaming.Container.MP3) {
-            if (!container.ffmpegRunner.isAvailable) {
-                repository.updateStatus(
-                    taskId,
-                    TaskStatus.FAILED,
-                    "mp3 на этом устройстве недоступен: ffmpeg собран только под " +
-                        "arm64. Оставьте M4A — он играется везде.",
-                )
-                return Result.failure()
-            }
-            val mp3 = File(workDir, "$taskId.mp3")
-            val conversion = container.ffmpegRunner.convertToMp3(mergedFile, mp3)
-            if (conversion.isFailure) {
-                val reason = conversion.exceptionOrNull()?.message ?: "неизвестная ошибка"
-                repository.updateStatus(taskId, TaskStatus.FAILED, "Не удалось сделать mp3: $reason")
-                return Result.failure()
-            }
-            mp3
-        } else {
-            mergedFile
-        }
 
         } finally {
             // Слот пост-обработки освобождается даже при ошибке: иначе
