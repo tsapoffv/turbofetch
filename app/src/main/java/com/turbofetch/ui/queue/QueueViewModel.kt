@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Intent
 import android.net.Uri
 import androidx.core.net.toUri
+import androidx.compose.runtime.Stable
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.turbofetch.TurboFetchApp
@@ -20,6 +21,7 @@ import com.turbofetch.domain.model.TaskStatus
 import com.turbofetch.worker.DownloadScheduler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,6 +30,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
+/**
+ * `@Stable` — публичные свойства модели не меняются: потоки, которые она
+ * отдаёт, одни и те же. Это важно для Compose: строки очереди получают
+ * лямбды-обработчики, захватывающие модель, и без этой пометки они
+ * считались бы нестабильными — а значит, строка перерисовывалась бы
+ * целиком на каждый тик прогресса.
+ */
+@Stable
 class QueueViewModel(application: Application) : AndroidViewModel(application) {
 
     private val container = (application as TurboFetchApp).container
@@ -39,8 +49,35 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
     /** Scope приложения: работа переживает закрытие activity. */
     private val appScope = (application as TurboFetchApp).appScope
 
-    val tasks: StateFlow<List<DownloadTask>> = repository.observeAll()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    /**
+     * Задачи очереди.
+     *
+     * Список задач и прогресс загрузок — два разных потока: задачи из
+     * базы меняются редко, а прогресс обновляется постоянно. Если смешать
+     * их в одном списке, каждый тик прогресса пересобирал бы весь список
+     * и перерисовывал экран целиком.
+     *
+     * Здесь они склеиваются, но неизменившиеся задачи остаются теми же
+     * объектами: у прогресса есть только у одной задачи, значит
+     * перерисуется только её строка.
+     */
+    val tasks: StateFlow<List<DownloadTask>> = combine(
+        repository.observeAll(),
+        repository.observeProgress(),
+    ) { tasks, progress ->
+        if (progress.isEmpty()) {
+            tasks
+        } else {
+            tasks.map { task ->
+                val live = progress[task.id]
+                if (live == null || live == task.progress) {
+                    task
+                } else {
+                    task.copy(progress = live)
+                }
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val settings = settingsRepository.observe()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings())

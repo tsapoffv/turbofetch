@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,9 +54,16 @@ fun TaskEditSheet(
     var audioOnly by remember(task.id) { mutableStateOf(task.audioOnly) }
     var customName by remember(task.id) { mutableStateOf(task.customName.orEmpty()) }
 
-    val videoFormats = task.availableFormats.filter { it.hasVideo && it.hasAudio }
-    val videoOnlyFormats = task.availableFormats.filter { it.hasVideo && !it.hasAudio }
-    val audioFormats = task.availableFormats.filter { it.hasAudio && !it.hasVideo }
+    // Списки форматов считаются один раз: шторка живёт в области экрана
+    // очереди и перерисовывается вместе с ним на каждый тик прогресса.
+    val (videoFormats, videoOnlyFormats, audioFormats) =
+        remember(task.availableFormats) {
+            Triple(
+                task.availableFormats.filter { it.hasVideo && it.hasAudio },
+                task.availableFormats.filter { it.hasVideo && !it.hasAudio },
+                task.availableFormats.filter { it.hasAudio && !it.hasVideo },
+            )
+        }
 
     // Все варианты видео: и со звуком, и требующие отдельной аудиодорожки.
     val allVideoFormats = videoFormats + videoOnlyFormats

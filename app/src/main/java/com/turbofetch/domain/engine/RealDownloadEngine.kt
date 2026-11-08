@@ -120,13 +120,21 @@ class RealDownloadEngine(
                     // File.outputStream() всегда открывает файл на перезапись и
                     // обрезал его, из-за чего докачанный файл получался битым.
                     java.io.FileOutputStream(request.outputFile, resuming).use { output ->
-                        val buffer = ByteArray(64 * 1024)
+                        // Буфер побольше: 256 КБ — это вчетверо меньше вызовов
+                        // write(), а на телефоне каждый вызов — это запись
+                        // через FUSE в MediaStore.
+                        val buffer = ByteArray(256 * 1024)
+                        // Прогресс отдаём не каждый чанк, а когда изменился
+                        // целый процент (и не чаще, чем раз в 100 мс).
+                        val throttle = ProgressThrottle()
                         while (true) {
                             val read = input.read(buffer)
                             if (read < 0) break
                             output.write(buffer, 0, read)
                             written += read
-                            emit(DownloadProgress.Running(written, total))
+                            if (throttle.shouldEmit(written, total)) {
+                                emit(DownloadProgress.Running(written, total))
+                            }
                         }
                     }
                 }

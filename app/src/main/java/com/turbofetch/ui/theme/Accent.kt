@@ -15,7 +15,9 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
@@ -118,17 +120,20 @@ fun AccentProgress(
     modifier: Modifier = Modifier,
 ) {
     val safe = progress.coerceIn(0f, 1f)
+    val track = MaterialTheme.colorScheme.surfaceVariant
+    // Заливка рисуется кистью, а не вложенным Box'ом с `fillMaxWidth`:
+    // изменение ширины заставляло Compose перемерить и переразложить
+    // всю строку задачи — вместе с её текстом. Рисование ничего не
+    // трогает: меняется только картинка.
+    val fill = MaterialTheme.colorScheme.primary
     Box(
-        modifier = modifier
-            .background(MaterialTheme.colorScheme.surfaceVariant),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(safe)
-                .fillMaxHeight()
-                .background(MaterialTheme.colorScheme.primary),
-        )
-    }
+        modifier = modifier.drawBehind {
+            drawRect(color = track)
+            if (safe > 0f) {
+                drawRect(color = fill, size = Size(size.width * safe, size.height))
+            }
+        },
+    )
 }
 
 /** Разделительная линия — одна волосяная черта. */

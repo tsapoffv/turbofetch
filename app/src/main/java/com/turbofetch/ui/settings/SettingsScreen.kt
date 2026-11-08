@@ -219,7 +219,7 @@ fun SettingsScreen(
     }
 }
 
-/** Версия приложения из манифеста: «0.2.1». */
+/** Версия приложения из манифеста: «0.3.0». */
 @Composable
 private fun appVersion(): String {
     val context = LocalContext.current

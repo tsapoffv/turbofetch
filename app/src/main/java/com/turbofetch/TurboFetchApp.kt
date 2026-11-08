@@ -9,6 +9,7 @@ import android.os.Bundle
 import com.turbofetch.core.di.AppContainer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.SupervisorJob
 
 class TurboFetchApp : Application() {
@@ -40,6 +41,25 @@ class TurboFetchApp : Application() {
         container = AppContainer(this)
         createNotificationChannels()
         registerActivityLifecycleCallbacks()
+        warmUpResolvers()
+    }
+
+    /**
+     * Прогрев резолверов в фоне.
+     *
+     * Инициализация NewPipeExtractor занимает десятки миллисекунд, и если
+     * она случится прямо во время первого разбора ссылки — интерфейс
+     * получит лишний кадр задержки. Поэтому делаем это заранее, на
+     * фоновом потоке: к моменту, когда юзер вставит ссылку, всё уже готово.
+     */
+    private fun warmUpResolvers() {
+        appScope.launch(Dispatchers.IO) {
+            runCatching {
+                com.turbofetch.data.resolver.youtube.NewPipeInitializer.ensure(container.httpClient)
+            }.onFailure {
+                com.turbofetch.core.Log.e("Не удалось прогреть резолверы", it)
+            }
+        }
     }
 
     private fun registerActivityLifecycleCallbacks() {

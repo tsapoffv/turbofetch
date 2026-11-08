@@ -19,6 +19,11 @@ import java.io.File
  */
 class MediaStoreWriter(private val context: Context) {
 
+    private companion object {
+        /** Буфер копирования: 256 КБ. */
+        const val COPY_BUFFER_SIZE = 256 * 1024
+    }
+
     suspend fun save(
         source: File,
         displayName: String,
@@ -72,7 +77,12 @@ class MediaStoreWriter(private val context: Context) {
             ?: error("Не удалось создать запись в MediaStore")
 
         resolver.openOutputStream(uri)?.use { out ->
-            source.inputStream().use { input -> input.copyTo(out) }
+            source.inputStream().use { input ->
+                // Буфер 256 КБ вместо стандартных 8 КБ: запись идёт через
+                // FUSE-мост MediaStore, и каждый вызов write() там стоит
+                // дорого. На файле в 200 МБ это 25 600 вызовов вместо 800.
+                input.copyTo(out, COPY_BUFFER_SIZE)
+            }
         } ?: error("Не удалось открыть поток записи")
 
         values.clear()
@@ -143,7 +153,7 @@ class MediaStoreWriter(private val context: Context) {
 
         val target = File(dir, displayName)
         source.inputStream().use { input ->
-            target.outputStream().use { out -> input.copyTo(out) }
+            target.outputStream().use { out -> input.copyTo(out, COPY_BUFFER_SIZE) }
         }
         return Uri.fromFile(target).toString()
     }

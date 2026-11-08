@@ -1,5 +1,7 @@
 package com.turbofetch.domain.model
 
+import androidx.compose.runtime.Immutable
+
 /** Состояние задачи в очереди. */
 enum class TaskStatus {
     /** Ссылка принята, метаданные ещё не получены. */
@@ -31,7 +33,16 @@ enum class TaskStatus {
     val isActive: Boolean get() = this == PROBING || this == RUNNING
 }
 
-/** Одна задача очереди: ссылка + выбранные параметры + состояние. */
+/**
+ * Одна задача очереди: ссылка + выбранные параметры + состояние.
+ *
+ * `@Immutable` — обещание Compose, что объект никогда не меняется изнутри.
+ * Оно выполняется: списки заменяются только через `copy`, а мутаций
+ * на месте в коде нет. Без этой пометки Compose считает класс
+ * нестабильным (из-за списков внутри) и перерисовывает строку очереди
+ * целиком на каждый тик прогресса — а тиков много.
+ */
+@Immutable
 data class DownloadTask(
     val id: String,
     val url: String,
